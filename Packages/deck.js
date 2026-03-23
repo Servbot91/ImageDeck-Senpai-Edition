@@ -35,44 +35,33 @@ export async function openDeck() {
         injectDynamicStyles(pluginConfig);
 
         // 1. Context Detection Logic
-        let detectedContext = detectContext();
-        
-        // Enhanced manual context creation for single galleries OR listing pages
-        if (window.location.pathname.startsWith('/galleries')) {
-            const galleryIdMatch = window.location.pathname.match(/^\/galleries\/(\d+)/);
-            
-            if (galleryIdMatch) {
-                // Scenario: Single Gallery Page
-                detectedContext = {
-                    type: 'galleries',
-                    id: galleryIdMatch[1],
-                    isSingleGallery: true
-                };
-            } else {
-                // Scenario: Gallery Listing Page (with filters/sorting)
-                // We capture the current search params to persist filters during pagination
-                detectedContext = {
-                    type: 'galleries-listing',
-                    isGalleryListing: true,
-                    queryParams: window.location.search 
-                };
-            }
-        }
+let detectedContext = detectContext();
 
-        storedContextInfo = detectedContext;
-        contextInfo = detectedContext;
-        console.log('[Image Deck] Context assigned:', contextInfo);
+// If we are on a gallery listing page, ensure detectContext 
+// has correctly identified it. If not, we force the refresh here.
+if (window.location.pathname === '/galleries' && !detectedContext?.isGalleryListing) {
+    detectedContext = {
+        type: 'galleries',
+        isGalleryListing: true,
+        filter: parseUrlFilters(window.location.search) // This is the crucial part
+    };
+}
+
+storedContextInfo = detectedContext;
+contextInfo = detectedContext;
+console.log('[Image Deck] Context assigned:', contextInfo);
 
 // 2. Determine what content to show
-        let imageResult;
-        
-        // UPDATED: Include 'images' type in context-based fetching
-        const isListContext = contextInfo && (
-            contextInfo.isSingleGallery || 
-            contextInfo.isGalleryListing || 
-            contextInfo.type === 'images' || // Added this
-            contextInfo.isFilteredView       // Added this
-        );
+let imageResult;
+
+// Ensure this check includes your gallery listing
+const isListContext = contextInfo && (
+    contextInfo.isSingleGallery || 
+    contextInfo.isGalleryListing || 
+    contextInfo.type === 'images' || 
+    contextInfo.isFilteredView ||
+    window.location.pathname.startsWith('/images') // Added this
+);
 
         if (isListContext) {
             console.log('[Image Deck] Using context-based fetching for page 1');
