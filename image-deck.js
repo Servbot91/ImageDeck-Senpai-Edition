@@ -1,190 +1,13 @@
 (() => {
-  // utils.js
-  var isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768 || "ontouchstart" in window;
-
-  // config.js
-  var PLUGIN_NAME = "image-deck";
-  async function getPluginConfig() {
-    try {
-      const response = await fetch("/graphql", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          query: `query Configuration {
-                    configuration {
-                        plugins
-                    }
-                }`
-        })
-      });
-      const data = await response.json();
-      const settings = data?.data?.configuration?.plugins?.[PLUGIN_NAME] || {};
-      if (!settings.autoPlayInterval || settings.autoPlayInterval === 0) settings.autoPlayInterval = 500;
-      if (!settings.transitionEffect || settings.transitionEffect === "") settings.transitionEffect = "cards";
-      if (settings.showProgressBar === void 0) settings.showProgressBar = true;
-      if (settings.showCounter === void 0) settings.showCounter = true;
-      if (!settings.preloadImages || settings.preloadImages === 0) settings.preloadImages = isMobile ? 1 : 1;
-      if (!settings.swipeResistance || settings.swipeResistance === 0) settings.swipeResistance = 80;
-      if (!settings.effectDepth || settings.effectDepth === 0) settings.effectDepth = 150;
-      if (settings.chunkSize === void 0) settings.chunkSize = 30;
-      if (settings.lazyLoadThreshold === void 0) settings.lazyLoadThreshold = 2;
-      if (!settings.ambientColorHue || settings.ambientColorHue === 0) settings.ambientColorHue = 260;
-      if (!settings.imageGlowIntensity || settings.imageGlowIntensity === 0) settings.imageGlowIntensity = 40;
-      if (!settings.ambientPulseSpeed || settings.ambientPulseSpeed === 0) settings.ambientPulseSpeed = 6;
-      if (!settings.edgeGlowIntensity || settings.edgeGlowIntensity === 0) settings.edgeGlowIntensity = 50;
-      if (!settings.strobeSpeed || settings.strobeSpeed === 0) settings.strobeSpeed = 150;
-      if (!settings.strobeIntensity || settings.strobeIntensity === 0) settings.strobeIntensity = 60;
-      console.log(`[Image Deck] Settings loaded:`, settings);
-      return settings;
-    } catch (error) {
-      console.error(`[Image Deck] Error loading settings:`, error);
-      return {
-        autoPlayInterval: 500,
-        transitionEffect: "cards",
-        showProgressBar: true,
-        showCounter: true,
-        preloadImages: 2,
-        swipeResistance: 50,
-        effectDepth: 150,
-        ambientColorHue: 260,
-        imageGlowIntensity: 40,
-        ambientPulseSpeed: 6
-      };
-    }
-  }
-  function injectDynamicStyles(settings) {
-    const styleId = "image-deck-dynamic-styles";
-    let styleEl = document.getElementById(styleId);
-    if (!styleEl) {
-      styleEl = document.createElement("style");
-      styleEl.id = styleId;
-      document.head.appendChild(styleEl);
-    }
-    const ambientHue = settings.ambientColorHue;
-    const glowIntensity = settings.imageGlowIntensity;
-    const pulseSpeed = settings.ambientPulseSpeed;
-    const edgeIntensity = settings.edgeGlowIntensity / 100;
-    styleEl.textContent = `
-        .swiper-slide img {
-            filter: drop-shadow(0 0 ${glowIntensity}px hsla(${ambientHue}, 70%, 65%, 0.4));
-        }
-
-        .image-deck-ambient {
-            background: radial-gradient(
-                ellipse at center,
-                hsla(${ambientHue}, 70%, 50%, 0.2) 0%,
-                hsla(${ambientHue}, 60%, 40%, 0.15) 50%,
-                transparent 100%
-            );
-            animation: ambientPulse ${pulseSpeed}s ease-in-out infinite;
-        }
-
-        .image-deck-container::before {
-            box-shadow: inset 0 0 ${100 * edgeIntensity}px hsla(${ambientHue}, 70%, 50%, ${0.2 * edgeIntensity});
-            animation: edgeGlow 4s ease-in-out infinite alternate;
-        }
-
-        @keyframes edgeGlow {
-            0% {
-                box-shadow: inset 0 0 ${100 * edgeIntensity}px hsla(${ambientHue}, 70%, 50%, ${0.2 * edgeIntensity});
-            }
-            100% {
-                box-shadow: inset 0 0 ${150 * edgeIntensity}px hsla(${ambientHue + 20}, 70%, 50%, ${0.3 * edgeIntensity});
-            }
-        }
-
-        .image-deck-progress {
-            background: linear-gradient(90deg,
-                hsl(${ambientHue}, 70%, 65%),
-                hsl(${ambientHue + 30}, 70%, 65%)
-            );
-        }
-        
-        /* Gallery cover styles */
-        .gallery-cover-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            margin: 20px auto;
-            max-width: 300px;
-        }
-        
-        .gallery-cover-title {
-            color: white;
-            font-size: 16px;
-            font-weight: bold;
-            text-align: center;
-            margin-bottom: 10px;
-            text-shadow: 0 0 5px rgba(0, 0, 0, 0.7);
-            padding: 5px 10px;
-            background: rgba(0, 0, 0, 0.3);
-            border-radius: 4px;
-            max-width: 100%;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        
-        .gallery-cover-link {
-            display: inline-block;
-            max-width: 300px;
-            max-height: 500px; /* Increased height by ~200px */
-            aspect-ratio: 3 / 5; /* More rectangular shape */
-            border: 3px solid #6a5acd;
-            border-radius: 8px;
-            box-shadow: 0 0 15px rgba(106, 90, 205, 0.7);
-            overflow: hidden;
-            transition: all 0.3s ease;
-            width: 100%;
-        }
-        
-        .gallery-cover-link:hover {
-            transform: scale(1.05);
-            box-shadow: 0 0 25px rgba(106, 90, 205, 0.9);
-            border-color: #8a7bdb;
-        }
-        
-        .gallery-cover-link img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            display: block;
-        }
-        
-        /* Mobile optimizations */
-        @media (max-width: 768px) {
-            .gallery-cover-container {
-                max-width: 200px;
-            }
-            
-            .gallery-cover-link {
-                max-width: 200px;
-                max-height: 350px;
-            }
-            
-            .gallery-cover-title {
-                font-size: 14px;
-                padding: 4px 8px;
-            }
-        }
-        
-        @media (max-width: 480px) {
-            .gallery-cover-container {
-                max-width: 150px;
-            }
-            
-            .gallery-cover-link {
-                max-width: 150px;
-                max-height: 250px;
-            }
-            
-            .gallery-cover-title {
-                font-size: 12px;
-                padding: 3px 6px;
-            }
-        }
-    `;
-  }
+  var __defProp = Object.defineProperty;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __esm = (fn, res) => function __init() {
+    return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+  };
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
 
   // context.js
   function detectContext() {
@@ -598,131 +421,208 @@
       };
     }
   }
+  var init_context = __esm({
+    "context.js"() {
+    }
+  });
 
-  // graphql.js
-  async function fetchImageMetadata(imageId) {
-    const query = `query FindImage($id: ID!) {
-        findImage(id: $id) {
-            id
-            title
-            rating100
-            o_counter
-            organized
-            date
-            details
-            photographer
-            files {
-                basename
-            }
-            tags {
-                id
-                name
-            }
-            performers {
-                id
-                name
-            }
-            studio {
-                id
-                name
-            }
-            galleries {
-                id
-                title
-            }
-            paths {
-                thumbnail
-                image
-            }
-        }
-    }`;
+  // utils.js
+  var isMobile;
+  var init_utils = __esm({
+    "utils.js"() {
+      isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768 || "ontouchstart" in window;
+    }
+  });
+
+  // config.js
+  async function getPluginConfig() {
     try {
       const response = await fetch("/graphql", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query, variables: { id: imageId } })
+        body: JSON.stringify({
+          query: `query Configuration {
+                    configuration {
+                        plugins
+                    }
+                }`
+        })
       });
       const data = await response.json();
-      return data?.data?.findImage || null;
+      const settings = data?.data?.configuration?.plugins?.[PLUGIN_NAME] || {};
+      if (!settings.autoPlayInterval || settings.autoPlayInterval === 0) settings.autoPlayInterval = 500;
+      if (!settings.transitionEffect || settings.transitionEffect === "") settings.transitionEffect = "cards";
+      if (settings.showProgressBar === void 0) settings.showProgressBar = true;
+      if (settings.showCounter === void 0) settings.showCounter = true;
+      if (!settings.preloadImages || settings.preloadImages === 0) settings.preloadImages = isMobile ? 1 : 1;
+      if (!settings.swipeResistance || settings.swipeResistance === 0) settings.swipeResistance = 80;
+      if (!settings.effectDepth || settings.effectDepth === 0) settings.effectDepth = 150;
+      if (settings.chunkSize === void 0) settings.chunkSize = 30;
+      if (settings.lazyLoadThreshold === void 0) settings.lazyLoadThreshold = 2;
+      if (!settings.ambientColorHue || settings.ambientColorHue === 0) settings.ambientColorHue = 260;
+      if (!settings.imageGlowIntensity || settings.imageGlowIntensity === 0) settings.imageGlowIntensity = 40;
+      if (!settings.ambientPulseSpeed || settings.ambientPulseSpeed === 0) settings.ambientPulseSpeed = 6;
+      if (!settings.edgeGlowIntensity || settings.edgeGlowIntensity === 0) settings.edgeGlowIntensity = 50;
+      if (!settings.strobeSpeed || settings.strobeSpeed === 0) settings.strobeSpeed = 150;
+      if (!settings.strobeIntensity || settings.strobeIntensity === 0) settings.strobeIntensity = 60;
+      console.log(`[Image Deck] Settings loaded:`, settings);
+      return settings;
     } catch (error) {
-      console.error("[Image Deck] Error fetching image metadata:", error);
-      return null;
+      console.error(`[Image Deck] Error loading settings:`, error);
+      return {
+        autoPlayInterval: 500,
+        transitionEffect: "cards",
+        showProgressBar: true,
+        showCounter: true,
+        preloadImages: 2,
+        swipeResistance: 50,
+        effectDepth: 150,
+        ambientColorHue: 260,
+        imageGlowIntensity: 40,
+        ambientPulseSpeed: 6
+      };
     }
   }
-  async function updateImageMetadata(imageId, updates) {
-    const mutation = `mutation ImageUpdate($input: ImageUpdateInput!) {
-        imageUpdate(input: $input) {
-            id
-            rating100
-            title
-            details
-            organized
+  function injectDynamicStyles(settings) {
+    const styleId = "image-deck-dynamic-styles";
+    let styleEl = document.getElementById(styleId);
+    if (!styleEl) {
+      styleEl = document.createElement("style");
+      styleEl.id = styleId;
+      document.head.appendChild(styleEl);
+    }
+    const ambientHue = settings.ambientColorHue;
+    const glowIntensity = settings.imageGlowIntensity;
+    const pulseSpeed = settings.ambientPulseSpeed;
+    const edgeIntensity = settings.edgeGlowIntensity / 100;
+    styleEl.textContent = `
+        .swiper-slide img {
+            filter: drop-shadow(0 0 ${glowIntensity}px hsla(${ambientHue}, 70%, 65%, 0.4));
         }
-    }`;
-    const input = { id: imageId, ...updates };
-    try {
-      const response = await fetch("/graphql", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: mutation, variables: { input } })
-      });
-      const data = await response.json();
-      return data?.data?.imageUpdate || null;
-    } catch (error) {
-      console.error("[Image Deck] Error updating image metadata:", error);
-      return null;
-    }
-  }
-  async function updateImageTags(imageId, tagIds) {
-    const mutation = `mutation ImageUpdate($input: ImageUpdateInput!) {
-        imageUpdate(input: $input) {
-            id
-            tags {
-                id
-                name
+
+        .image-deck-ambient {
+            background: radial-gradient(
+                ellipse at center,
+                hsla(${ambientHue}, 70%, 50%, 0.2) 0%,
+                hsla(${ambientHue}, 60%, 40%, 0.15) 50%,
+                transparent 100%
+            );
+            animation: ambientPulse ${pulseSpeed}s ease-in-out infinite;
+        }
+
+        .image-deck-container::before {
+            box-shadow: inset 0 0 ${100 * edgeIntensity}px hsla(${ambientHue}, 70%, 50%, ${0.2 * edgeIntensity});
+            animation: edgeGlow 4s ease-in-out infinite alternate;
+        }
+
+        @keyframes edgeGlow {
+            0% {
+                box-shadow: inset 0 0 ${100 * edgeIntensity}px hsla(${ambientHue}, 70%, 50%, ${0.2 * edgeIntensity});
+            }
+            100% {
+                box-shadow: inset 0 0 ${150 * edgeIntensity}px hsla(${ambientHue + 20}, 70%, 50%, ${0.3 * edgeIntensity});
             }
         }
-    }`;
-    const input = { id: imageId, tag_ids: tagIds };
-    try {
-      const response = await fetch("/graphql", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: mutation, variables: { input } })
-      });
-      const data = await response.json();
-      return data?.data?.imageUpdate || null;
-    } catch (error) {
-      console.error("[Image Deck] Error updating image tags:", error);
-      return null;
-    }
-  }
-  async function searchTags(query) {
-    const gql = `query FindTags($filter: FindFilterType, $tag_filter: TagFilterType) {
-        findTags(filter: $filter, tag_filter: $tag_filter) {
-            tags {
-                id
-                name
+
+        .image-deck-progress {
+            background: linear-gradient(90deg,
+                hsl(${ambientHue}, 70%, 65%),
+                hsl(${ambientHue + 30}, 70%, 65%)
+            );
+        }
+        
+        /* Gallery cover styles */
+        .gallery-cover-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 20px auto;
+            max-width: 300px;
+        }
+        
+        .gallery-cover-title {
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 10px;
+            text-shadow: 0 0 5px rgba(0, 0, 0, 0.7);
+            padding: 5px 10px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 4px;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        
+        .gallery-cover-link {
+            display: inline-block;
+            max-width: 300px;
+            max-height: 500px; /* Increased height by ~200px */
+            aspect-ratio: 3 / 5; /* More rectangular shape */
+            border: 3px solid #6a5acd;
+            border-radius: 8px;
+            box-shadow: 0 0 15px rgba(106, 90, 205, 0.7);
+            overflow: hidden;
+            transition: all 0.3s ease;
+            width: 100%;
+        }
+        
+        .gallery-cover-link:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 25px rgba(106, 90, 205, 0.9);
+            border-color: #8a7bdb;
+        }
+        
+        .gallery-cover-link img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        
+        /* Mobile optimizations */
+        @media (max-width: 768px) {
+            .gallery-cover-container {
+                max-width: 200px;
+            }
+            
+            .gallery-cover-link {
+                max-width: 200px;
+                max-height: 350px;
+            }
+            
+            .gallery-cover-title {
+                font-size: 14px;
+                padding: 4px 8px;
             }
         }
-    }`;
-    const variables = {
-      filter: { per_page: 20, q: query },
-      tag_filter: {}
-    };
-    try {
-      const response = await fetch("/graphql", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: gql, variables })
-      });
-      const data = await response.json();
-      return data?.data?.findTags?.tags || [];
-    } catch (error) {
-      console.error("[Image Deck] Error searching tags:", error);
-      return [];
-    }
+        
+        @media (max-width: 480px) {
+            .gallery-cover-container {
+                max-width: 150px;
+            }
+            
+            .gallery-cover-link {
+                max-width: 150px;
+                max-height: 250px;
+            }
+            
+            .gallery-cover-title {
+                font-size: 12px;
+                padding: 3px 6px;
+            }
+        }
+    `;
   }
+  var PLUGIN_NAME;
+  var init_config = __esm({
+    "config.js"() {
+      init_utils();
+      PLUGIN_NAME = "image-deck";
+    }
+  });
 
   // swiper.js
   function getEffectOptions(effect, pluginConfig2) {
@@ -932,147 +832,145 @@
     container.querySelector(".image-deck-loading").style.display = "none";
     return swiper;
   }
+  var init_swiper = __esm({
+    "swiper.js"() {
+    }
+  });
 
-  // ui.js
-  var pluginConfig = null;
-  var currentSwiper = null;
-  var currentImages = [];
-  var autoPlayInterval = null;
-  var isAutoPlaying = false;
-  var contextInfo = null;
-  var loadingQueue = [];
-  var currentChunkPage = 1;
-  var chunkSize = 50;
-  var totalImageCount = 0;
-  var totalPages = 0;
-  var storedContextInfo = null;
-  function initialize() {
-    console.log("[Image Deck] Initializing...");
-    if (typeof Swiper === "undefined") {
-      console.error("[Image Deck] Swiper not loaded!");
-      return;
-    }
-    retryCreateButton();
-    let debounceTimer;
-    const observer = new MutationObserver((mutations) => {
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        const hasButton = document.querySelector(".image-deck-launch-btn");
-        const shouldHaveButton = detectContext() || document.querySelectorAll('img[src*="/image/"]').length > 0 || document.querySelectorAll(".gallery-cover img, .gallery-card img").length > 0;
-        if (!hasButton && shouldHaveButton) {
-          createLaunchButton();
+  // graphql.js
+  async function fetchImageMetadata(imageId) {
+    const query = `query FindImage($id: ID!) {
+        findImage(id: $id) {
+            id
+            title
+            rating100
+            o_counter
+            organized
+            date
+            details
+            photographer
+            files {
+                basename
+            }
+            tags {
+                id
+                name
+            }
+            performers {
+                id
+                name
+            }
+            studio {
+                id
+                name
+            }
+            galleries {
+                id
+                title
+            }
+            paths {
+                thumbnail
+                image
+            }
         }
-      }, 300);
-    });
-    const mainContent = document.querySelector(".main-content") || document.querySelector('[role="main"]') || document.body;
-    observer.observe(mainContent, {
-      childList: true,
-      subtree: true
-      // Watch subtree to catch React updates
-    });
-    console.log("[Image Deck] Initialized");
-  }
-  function createLaunchButton() {
-    console.log("[Image Deck] Creating launch button...");
-    const context = detectContext();
-    const hasImages = document.querySelectorAll('img[src*="/image/"]').length > 0;
-    const hasGalleryCovers = document.querySelectorAll(".gallery-cover img, .gallery-card img").length > 0;
-    console.log("[Image Deck] Context detection result:", context);
-    console.log("[Image Deck] Has images:", hasImages);
-    console.log("[Image Deck] Has gallery covers:", hasGalleryCovers);
-    if (!context && !hasImages && !hasGalleryCovers) {
-      console.log("[Image Deck] Not on relevant page, removing button if exists");
-      const existing2 = document.querySelector(".image-deck-launch-btn");
-      if (existing2) existing2.remove();
-      return;
-    }
-    const existing = document.querySelector(".image-deck-launch-btn");
-    if (existing) {
-      console.log("[Image Deck] Removing existing button");
-      existing.remove();
-    }
-    const button = document.createElement("button");
-    button.className = "image-deck-launch-btn";
-    button.innerHTML = "\u{1F3B4}";
-    button.title = "Open Image Deck";
-    button.addEventListener("click", function(e) {
-      console.log("[Image Deck] Launch button clicked!");
-      openDeck();
-    });
-    document.body.appendChild(button);
-    console.log("[Image Deck] Launch button created successfully");
-  }
-  function retryCreateButton(attempts = 0, maxAttempts = 5) {
-    const delays = [100, 300, 500, 1e3, 2e3];
-    if (attempts >= maxAttempts) {
-      console.log("[Image Deck] Max retry attempts reached");
-      return;
-    }
-    const hasContext = detectContext();
-    const hasImages = document.querySelectorAll('img[src*="/image/"]').length > 0;
-    const hasGalleryCovers = document.querySelectorAll(".gallery-cover img, .gallery-card img").length > 0;
-    if (hasContext || hasImages || hasGalleryCovers) {
-      createLaunchButton();
-    } else if (attempts < maxAttempts - 1) {
-      setTimeout(() => retryCreateButton(attempts + 1, maxAttempts), delays[attempts]);
-    }
-  }
-  function createDeckUI() {
-    const existing = document.querySelector(".image-deck-container");
-    if (existing) existing.remove();
-    const container = document.createElement("div");
-    container.className = `image-deck-container${isMobile ? " mobile-optimized" : ""}`;
-    container.innerHTML = `
-        <div class="image-deck-ambient"></div>
-        <div class="image-deck-topbar">
-            <div class="image-deck-counter"></div>
-            <div class="image-deck-topbar-btns">
-                <button class="image-deck-fullscreen" title="Toggle Fullscreen">\u26F6</button>
-                <button class="image-deck-close">\u2715</button>
-            </div>
-        </div>
-        <div class="image-deck-progress"></div>
-        <div class="image-deck-loading"></div>
-        <div class="image-deck-swiper swiper">
-            <div class="swiper-wrapper"></div>
-        </div>
-        <div class="image-deck-controls">
-            <button class="image-deck-control-btn" data-action="prev">\u25C0</button>
-            <button class="image-deck-control-btn" data-action="play">\u25B6</button>
-            <button class="image-deck-control-btn" data-action="next">\u25B6</button>
-            <button class="image-deck-control-btn image-deck-info-btn" data-action="info" title="Image Info (I)">\u2139</button>
-            <button class="image-deck-control-btn" data-action="next-chunk" title="Load Next Chunk">\u23ED\uFE0F</button>
-        </div>
-        <div class="image-deck-speed">Speed: ${pluginConfig.autoPlayInterval}ms</div>
-        <div class="image-deck-metadata-modal">
-            <div class="image-deck-metadata-content">
-                <div class="image-deck-metadata-header">
-                    <h3>Image Details</h3>
-                    <button class="image-deck-metadata-close">\u2715</button>
-                </div>
-                <div class="image-deck-metadata-body"></div>
-            </div>
-        </div>
-    `;
-    document.body.appendChild(container);
-    return container;
-  }
-  function toggleFullscreen() {
-    const container = document.querySelector(".image-deck-container");
-    if (!container) return;
-    if (!document.fullscreenElement) {
-      container.requestFullscreen().catch((err) => {
-        console.warn("[Image Deck] Fullscreen request failed:", err);
+    }`;
+    try {
+      const response = await fetch("/graphql", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query, variables: { id: imageId } })
       });
-    } else {
-      document.exitFullscreen();
+      const data = await response.json();
+      return data?.data?.findImage || null;
+    } catch (error) {
+      console.error("[Image Deck] Error fetching image metadata:", error);
+      return null;
     }
   }
-  var currentMetadata = null;
+  async function updateImageMetadata(imageId, updates) {
+    const mutation = `mutation ImageUpdate($input: ImageUpdateInput!) {
+        imageUpdate(input: $input) {
+            id
+            rating100
+            title
+            details
+            organized
+        }
+    }`;
+    const input = { id: imageId, ...updates };
+    try {
+      const response = await fetch("/graphql", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: mutation, variables: { input } })
+      });
+      const data = await response.json();
+      return data?.data?.imageUpdate || null;
+    } catch (error) {
+      console.error("[Image Deck] Error updating image metadata:", error);
+      return null;
+    }
+  }
+  async function updateImageTags(imageId, tagIds) {
+    const mutation = `mutation ImageUpdate($input: ImageUpdateInput!) {
+        imageUpdate(input: $input) {
+            id
+            tags {
+                id
+                name
+            }
+        }
+    }`;
+    const input = { id: imageId, tag_ids: tagIds };
+    try {
+      const response = await fetch("/graphql", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: mutation, variables: { input } })
+      });
+      const data = await response.json();
+      return data?.data?.imageUpdate || null;
+    } catch (error) {
+      console.error("[Image Deck] Error updating image tags:", error);
+      return null;
+    }
+  }
+  async function searchTags(query) {
+    const gql = `query FindTags($filter: FindFilterType, $tag_filter: TagFilterType) {
+        findTags(filter: $filter, tag_filter: $tag_filter) {
+            tags {
+                id
+                name
+            }
+        }
+    }`;
+    const variables = {
+      filter: { per_page: 20, q: query },
+      tag_filter: {}
+    };
+    try {
+      const response = await fetch("/graphql", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: gql, variables })
+      });
+      const data = await response.json();
+      return data?.data?.findTags?.tags || [];
+    } catch (error) {
+      console.error("[Image Deck] Error searching tags:", error);
+      return [];
+    }
+  }
+  var init_graphql = __esm({
+    "graphql.js"() {
+    }
+  });
+
+  // metadata.js
   async function openMetadataModal() {
-    if (!currentSwiper) return;
-    const currentIndex = currentSwiper.activeIndex;
-    const currentImage = currentImages[currentIndex];
+    if (!currentSwiperRef) return;
+    const currentIndex = currentSwiperRef.activeIndex;
+    const currentImage = window.currentImages[currentIndex];
     if (!currentImage || !currentImage.id) return;
     const modal = document.querySelector(".image-deck-metadata-modal");
     const body = document.querySelector(".image-deck-metadata-body");
@@ -1241,111 +1139,200 @@
       organizedBtn.textContent = newOrganized ? "Organized \u2713" : "Mark Organized";
     });
   }
-  var uiUpdatePending = false;
-  function updateUI(container) {
-    if (!currentSwiper || uiUpdatePending) return;
-    uiUpdatePending = true;
-    requestAnimationFrame(() => {
-      let current = 1;
-      const displayedTotal = currentImages.length;
-      const actualTotal = totalImageCount || displayedTotal;
-      if (currentSwiper.virtual) {
-        current = currentSwiper.activeIndex + 1;
-      } else {
-        if (currentSwiper.params.loop && contextInfo?.isSingleGallery) {
-          const realIndex = currentSwiper.realIndex + 1;
-          if (realIndex === 0) {
-            current = displayedTotal;
-          } else if (realIndex > displayedTotal) {
-            current = 1;
-          } else {
-            current = realIndex;
-          }
-        } else {
-          current = currentSwiper.activeIndex + 1;
+  var currentMetadata, currentSwiperRef;
+  var init_metadata = __esm({
+    "metadata.js"() {
+      init_graphql();
+      currentMetadata = null;
+      currentSwiperRef = null;
+    }
+  });
+
+  // controls.js
+  var controls_exports = {};
+  __export(controls_exports, {
+    setupEventHandlers: () => setupEventHandlers
+  });
+  function toggleFullscreen() {
+    const container = document.querySelector(".image-deck-container");
+    if (!container) return;
+    if (!document.fullscreenElement) {
+      container.requestFullscreen().catch((err) => {
+        console.warn("[Image Deck] Fullscreen request failed:", err);
+      });
+    } else {
+      document.exitFullscreen();
+    }
+  }
+  function setupEventHandlers(container) {
+    const closeBtn = container.querySelector(".image-deck-close");
+    if (closeBtn) {
+      closeBtn.addEventListener("click", closeDeck);
+    }
+    const fullscreenBtn = container.querySelector(".image-deck-fullscreen");
+    if (fullscreenBtn) {
+      fullscreenBtn.addEventListener("click", toggleFullscreen);
+    }
+    const metadataCloseBtn = container.querySelector(".image-deck-metadata-close");
+    if (metadataCloseBtn) {
+      metadataCloseBtn.addEventListener("click", closeMetadataModal);
+    }
+    const controlButtons = container.querySelectorAll(".image-deck-control-btn");
+    console.log("[Image Deck] Found control buttons:", controlButtons.length);
+    controlButtons.forEach((button) => {
+      button.addEventListener("click", (e) => {
+        const action = button.dataset.action;
+        console.log("[Image Deck] Button clicked:", action);
+        if (!action) return;
+        switch (action) {
+          case "prev":
+            console.log("[Image Deck] Previous button clicked");
+            const swiper = window.currentSwiperInstance;
+            if (swiper) {
+              swiper.slidePrev();
+            } else {
+              console.log("[Image Deck] No swiper instance found");
+            }
+            break;
+          case "next":
+            console.log("[Image Deck] Next button clicked");
+            if (swiper) {
+              swiper.slideNext();
+              setTimeout(() => {
+                if (typeof checkAndLoadNextChunk === "function") {
+                  checkAndLoadNextChunk();
+                }
+              }, 100);
+            } else {
+              console.log("[Image Deck] No swiper instance found");
+            }
+            break;
+          case "play":
+            console.log("[Image Deck] Play button clicked");
+            const playBtn = document.querySelector('[data-action="play"]');
+            const isAutoPlaying2 = playBtn && playBtn.classList.contains("active");
+            if (isAutoPlaying2) {
+              stopAutoPlay();
+            } else {
+              startAutoPlay();
+            }
+            break;
+          case "info":
+            console.log("[Image Deck] Info button clicked");
+            openMetadataModal();
+            break;
+          case "next-chunk":
+            console.log("[Image Deck] Next chunk button clicked");
+            loadNextChunk();
+            break;
+          default:
+            console.log("[Image Deck] Unknown action:", action);
         }
-      }
-      if (pluginConfig.showCounter) {
-        const counter = container.querySelector(".image-deck-counter");
-        const chunkInfo = totalPages > 1 ? ` (chunk ${currentChunkPage}/${totalPages})` : "";
-        if (counter) {
-          counter.textContent = `${current} of ${actualTotal}${chunkInfo}`;
-        }
-      }
-      if (pluginConfig.showProgressBar) {
-        const progress = container.querySelector(".image-deck-progress");
-        if (progress) {
-          const progressValue = actualTotal > 0 ? current / actualTotal : 0;
-          progress.style.transform = `scaleX(${progressValue})`;
-        }
-      }
-      uiUpdatePending = false;
+      });
     });
-  }
-  function checkAndLoadNextChunk() {
-    if (!currentSwiper) return;
-    const currentIndex = currentSwiper.activeIndex;
-    const totalCurrentSlides = currentImages.length;
-    if (currentIndex >= totalCurrentSlides - 5 && currentChunkPage < totalPages) {
-      const nextChunkBtn = document.querySelector('[data-action="next-chunk"]');
-      if (nextChunkBtn && !nextChunkBtn.disabled) {
-        console.log("[Image Deck] Approaching end, preloading next chunk...");
-        setTimeout(() => {
-          if (nextChunkBtn) nextChunkBtn.click();
-        }, 500);
+    document.addEventListener("keydown", handleKeyboard);
+    let touchStartY = 0;
+    let touchDeltaY = 0;
+    let rafId = null;
+    const swiperEl = container.querySelector(".image-deck-swiper");
+    swiperEl.addEventListener("touchstart", (e) => {
+      if (e.target.closest(".image-deck-metadata-modal")) return;
+      touchStartY = e.touches[0].clientY;
+    }, { passive: true });
+    swiperEl.addEventListener("touchmove", (e) => {
+      if (e.target.closest(".image-deck-metadata-modal")) return;
+      touchDeltaY = e.touches[0].clientY - touchStartY;
+      if (touchDeltaY > 50) {
+        if (rafId) cancelAnimationFrame(rafId);
+        rafId = requestAnimationFrame(() => {
+          container.style.transform = `translateY(${touchDeltaY * 0.3}px)`;
+          container.style.opacity = Math.max(0.3, 1 - touchDeltaY / 500);
+        });
+      } else if (touchDeltaY < -50) {
+        if (rafId) cancelAnimationFrame(rafId);
+        rafId = requestAnimationFrame(() => {
+          const modal = container.querySelector(".image-deck-metadata-modal");
+          if (modal && !modal.classList.contains("active")) {
+            modal.style.transform = `translateY(${Math.max(touchDeltaY, -200)}px)`;
+            modal.style.opacity = Math.min(Math.abs(touchDeltaY) / 150, 1);
+          }
+        });
       }
-    }
-  }
-  function startAutoPlay() {
-    if (!currentSwiper || isAutoPlaying) return;
-    isAutoPlaying = true;
-    const playBtn = document.querySelector('[data-action="play"]');
-    if (playBtn) {
-      playBtn.innerHTML = "\u23F8";
-      playBtn.classList.add("active");
-    }
-    autoPlayInterval = setInterval(() => {
-      if (currentSwiper.isEnd) {
-        stopAutoPlay();
+    }, { passive: true });
+    swiperEl.addEventListener("touchend", () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      if (touchDeltaY > 150) {
+        closeDeck();
+      } else if (touchDeltaY < -100) {
+        openMetadataModal();
       } else {
-        currentSwiper.slideNext();
+        requestAnimationFrame(() => {
+          container.style.transform = "";
+          container.style.opacity = "";
+          const modal = container.querySelector(".image-deck-metadata-modal");
+          if (modal && !modal.classList.contains("active")) {
+            modal.style.transform = "";
+            modal.style.opacity = "";
+          }
+        });
       }
-    }, pluginConfig.autoPlayInterval);
-    const speedIndicator = document.querySelector(".image-deck-speed");
-    if (speedIndicator) {
-      speedIndicator.classList.add("visible");
-      setTimeout(() => speedIndicator.classList.remove("visible"), 2e3);
-    }
+      touchDeltaY = 0;
+    }, { passive: true });
   }
-  function stopAutoPlay() {
-    if (!isAutoPlaying) return;
-    isAutoPlaying = false;
-    const playBtn = document.querySelector('[data-action="play"]');
-    if (playBtn) {
-      playBtn.innerHTML = "\u25B6";
-      playBtn.classList.remove("active");
-    }
-    if (autoPlayInterval) {
-      clearInterval(autoPlayInterval);
-      autoPlayInterval = null;
-    }
-  }
-  function savePosition() {
-    if (!currentSwiper || !contextInfo) return;
-    const key = `${PLUGIN_NAME}_position_${contextInfo.type}_${contextInfo.id}`;
-    sessionStorage.setItem(key, currentSwiper.activeIndex.toString());
-  }
-  function restorePosition() {
-    if (!currentSwiper || !contextInfo) return;
-    const key = `${PLUGIN_NAME}_position_${contextInfo.type}_${contextInfo.id}`;
-    const savedPosition = sessionStorage.getItem(key);
-    if (savedPosition) {
-      const index = parseInt(savedPosition);
-      if (!isNaN(index) && index < (currentSwiper.slides.length || currentImages.length)) {
-        currentSwiper.slideTo(index, 0);
+  function handleKeyboard(e) {
+    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") {
+      if (e.key === "Escape") {
+        closeMetadataModal();
       }
+      return;
+    }
+    switch (e.key) {
+      case "Escape":
+        const modal = document.querySelector(".image-deck-metadata-modal");
+        if (modal && modal.classList.contains("active")) {
+          closeMetadataModal();
+        } else {
+          closeDeck();
+        }
+        break;
+      case " ":
+        e.preventDefault();
+        const playBtn = document.querySelector('[data-action="play"]');
+        const isAutoPlaying2 = playBtn && playBtn.classList.contains("active");
+        if (isAutoPlaying2) {
+          stopAutoPlay();
+        } else {
+          startAutoPlay();
+        }
+        break;
+      case "i":
+      case "I":
+        e.preventDefault();
+        const metadataModal = document.querySelector(".image-deck-metadata-modal");
+        if (metadataModal && metadataModal.classList.contains("active")) {
+          closeMetadataModal();
+        } else {
+          openMetadataModal();
+        }
+        break;
     }
   }
+  var init_controls = __esm({
+    "controls.js"() {
+      init_deck();
+      init_metadata();
+    }
+  });
+
+  // deck.js
+  var deck_exports = {};
+  __export(deck_exports, {
+    closeDeck: () => closeDeck,
+    loadNextChunk: () => loadNextChunk,
+    openDeck: () => openDeck,
+    startAutoPlay: () => startAutoPlay,
+    stopAutoPlay: () => stopAutoPlay
+  });
   async function openDeck() {
     console.log("[Image Deck] Opening deck...");
     console.log("[Image Deck] Current URL:", window.location.pathname);
@@ -1432,10 +1419,142 @@
       currentSwiper = initSwiper(container, currentImages, pluginConfig, updateUI, savePosition, contextInfo);
       restorePosition();
       updateUI(container);
-      setupEventHandlers(container);
+      Promise.resolve().then(() => (init_controls(), controls_exports)).then((module) => {
+        module.setupEventHandlers(container);
+      });
     } catch (error) {
       console.error("[Image Deck] Error opening deck:", error);
       alert("Error opening Image Deck: " + error.message);
+    }
+  }
+  function createDeckUI() {
+    const existing = document.querySelector(".image-deck-container");
+    if (existing) existing.remove();
+    const container = document.createElement("div");
+    container.className = `image-deck-container${isMobile ? " mobile-optimized" : ""}`;
+    container.innerHTML = `
+        <div class="image-deck-ambient"></div>
+        <div class="image-deck-topbar">
+            <div class="image-deck-counter"></div>
+            <div class="image-deck-topbar-btns">
+                <button class="image-deck-fullscreen" title="Toggle Fullscreen">\u26F6</button>
+                <button class="image-deck-close">\u2715</button>
+            </div>
+        </div>
+        <div class="image-deck-progress"></div>
+        <div class="image-deck-loading"></div>
+        <div class="image-deck-swiper swiper">
+            <div class="swiper-wrapper"></div>
+        </div>
+        <div class="image-deck-controls">
+            <button class="image-deck-control-btn" data-action="prev">\u25C0</button>
+            <button class="image-deck-control-btn" data-action="play">\u25B6</button>
+            <button class="image-deck-control-btn" data-action="next">\u25B6</button>
+            <button class="image-deck-control-btn image-deck-info-btn" data-action="info" title="Image Info (I)">\u2139</button>
+            <button class="image-deck-control-btn" data-action="next-chunk" title="Load Next Chunk">\u23ED\uFE0F</button>
+        </div>
+        <div class="image-deck-speed">Speed: ${pluginConfig.autoPlayInterval}ms</div>
+        <div class="image-deck-metadata-modal">
+            <div class="image-deck-metadata-content">
+                <div class="image-deck-metadata-header">
+                    <h3>Image Details</h3>
+                    <button class="image-deck-metadata-close">\u2715</button>
+                </div>
+                <div class="image-deck-metadata-body"></div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(container);
+    return container;
+  }
+  function updateUI(container) {
+    if (!currentSwiper || uiUpdatePending) return;
+    uiUpdatePending = true;
+    requestAnimationFrame(() => {
+      let current = 1;
+      const displayedTotal = currentImages.length;
+      const actualTotal = totalImageCount || displayedTotal;
+      if (currentSwiper.virtual) {
+        current = currentSwiper.activeIndex + 1;
+      } else {
+        if (currentSwiper.params.loop && contextInfo?.isSingleGallery) {
+          const realIndex = currentSwiper.realIndex + 1;
+          if (realIndex === 0) {
+            current = displayedTotal;
+          } else if (realIndex > displayedTotal) {
+            current = 1;
+          } else {
+            current = realIndex;
+          }
+        } else {
+          current = currentSwiper.activeIndex + 1;
+        }
+      }
+      if (pluginConfig.showCounter) {
+        const counter = container.querySelector(".image-deck-counter");
+        const chunkInfo = totalPages > 1 ? ` (chunk ${currentChunkPage}/${totalPages})` : "";
+        if (counter) {
+          counter.textContent = `${current} of ${actualTotal}${chunkInfo}`;
+        }
+      }
+      if (pluginConfig.showProgressBar) {
+        const progress = container.querySelector(".image-deck-progress");
+        if (progress) {
+          const progressValue = actualTotal > 0 ? current / actualTotal : 0;
+          progress.style.transform = `scaleX(${progressValue})`;
+        }
+      }
+      uiUpdatePending = false;
+    });
+  }
+  function startAutoPlay() {
+    if (!currentSwiper || isAutoPlaying) return;
+    isAutoPlaying = true;
+    const playBtn = document.querySelector('[data-action="play"]');
+    if (playBtn) {
+      playBtn.innerHTML = "\u23F8";
+      playBtn.classList.add("active");
+    }
+    autoPlayInterval = setInterval(() => {
+      if (currentSwiper.isEnd) {
+        stopAutoPlay();
+      } else {
+        currentSwiper.slideNext();
+      }
+    }, pluginConfig.autoPlayInterval);
+    const speedIndicator = document.querySelector(".image-deck-speed");
+    if (speedIndicator) {
+      speedIndicator.classList.add("visible");
+      setTimeout(() => speedIndicator.classList.remove("visible"), 2e3);
+    }
+  }
+  function stopAutoPlay() {
+    if (!isAutoPlaying) return;
+    isAutoPlaying = false;
+    const playBtn = document.querySelector('[data-action="play"]');
+    if (playBtn) {
+      playBtn.innerHTML = "\u25B6";
+      playBtn.classList.remove("active");
+    }
+    if (autoPlayInterval) {
+      clearInterval(autoPlayInterval);
+      autoPlayInterval = null;
+    }
+  }
+  function savePosition() {
+    if (!currentSwiper || !contextInfo) return;
+    const key = `${PLUGIN_NAME}_position_${contextInfo.type}_${contextInfo.id}`;
+    sessionStorage.setItem(key, currentSwiper.activeIndex.toString());
+  }
+  function restorePosition() {
+    if (!currentSwiper || !contextInfo) return;
+    const key = `${PLUGIN_NAME}_position_${contextInfo.type}_${contextInfo.id}`;
+    const savedPosition = sessionStorage.getItem(key);
+    if (savedPosition) {
+      const index = parseInt(savedPosition);
+      if (!isNaN(index) && index < (currentSwiper.slides.length || currentImages.length)) {
+        currentSwiper.slideTo(index, 0);
+      }
     }
   }
   async function loadNextChunk() {
@@ -1561,150 +1680,108 @@
     contextInfo = null;
     loadingQueue = [];
   }
-  function setupEventHandlers(container) {
-    const closeBtn = container.querySelector(".image-deck-close");
-    if (closeBtn) {
-      closeBtn.addEventListener("click", closeDeck);
+  var pluginConfig, currentSwiper, currentImages, autoPlayInterval, isAutoPlaying, contextInfo, loadingQueue, currentChunkPage, chunkSize, totalImageCount, totalPages, storedContextInfo, uiUpdatePending;
+  var init_deck = __esm({
+    "deck.js"() {
+      init_config();
+      init_context();
+      init_swiper();
+      init_utils();
+      pluginConfig = null;
+      currentSwiper = null;
+      currentImages = [];
+      autoPlayInterval = null;
+      isAutoPlaying = false;
+      contextInfo = null;
+      loadingQueue = [];
+      currentChunkPage = 1;
+      chunkSize = 50;
+      totalImageCount = 0;
+      totalPages = 0;
+      storedContextInfo = null;
+      uiUpdatePending = false;
     }
-    const fullscreenBtn = container.querySelector(".image-deck-fullscreen");
-    if (fullscreenBtn) {
-      fullscreenBtn.addEventListener("click", toggleFullscreen);
-    }
-    const metadataCloseBtn = container.querySelector(".image-deck-metadata-close");
-    if (metadataCloseBtn) {
-      metadataCloseBtn.addEventListener("click", closeMetadataModal);
-    }
-    const controlButtons = container.querySelectorAll(".image-deck-control-btn");
-    console.log("[Image Deck] Found control buttons:", controlButtons.length);
-    controlButtons.forEach((button) => {
-      button.addEventListener("click", (e) => {
-        const action = button.dataset.action;
-        console.log("[Image Deck] Button clicked:", action);
-        if (!action) return;
-        switch (action) {
-          case "prev":
-            console.log("[Image Deck] Previous button clicked");
-            if (currentSwiper) {
-              currentSwiper.slidePrev();
-            } else {
-              console.log("[Image Deck] No swiper instance found");
-            }
-            break;
-          case "next":
-            console.log("[Image Deck] Next button clicked");
-            if (currentSwiper) {
-              currentSwiper.slideNext();
-              setTimeout(checkAndLoadNextChunk, 100);
-            } else {
-              console.log("[Image Deck] No swiper instance found");
-            }
-            break;
-          case "play":
-            console.log("[Image Deck] Play button clicked");
-            if (isAutoPlaying) {
-              stopAutoPlay();
-            } else {
-              startAutoPlay();
-            }
-            break;
-          case "info":
-            console.log("[Image Deck] Info button clicked");
-            openMetadataModal();
-            break;
-          case "next-chunk":
-            console.log("[Image Deck] Next chunk button clicked");
-            loadNextChunk();
-            break;
-          default:
-            console.log("[Image Deck] Unknown action:", action);
-        }
-      });
-    });
-    document.addEventListener("keydown", handleKeyboard);
-    let touchStartY = 0;
-    let touchDeltaY = 0;
-    let rafId = null;
-    const swiperEl = container.querySelector(".image-deck-swiper");
-    swiperEl.addEventListener("touchstart", (e) => {
-      if (e.target.closest(".image-deck-metadata-modal")) return;
-      touchStartY = e.touches[0].clientY;
-    }, { passive: true });
-    swiperEl.addEventListener("touchmove", (e) => {
-      if (e.target.closest(".image-deck-metadata-modal")) return;
-      touchDeltaY = e.touches[0].clientY - touchStartY;
-      if (touchDeltaY > 50) {
-        if (rafId) cancelAnimationFrame(rafId);
-        rafId = requestAnimationFrame(() => {
-          container.style.transform = `translateY(${touchDeltaY * 0.3}px)`;
-          container.style.opacity = Math.max(0.3, 1 - touchDeltaY / 500);
-        });
-      } else if (touchDeltaY < -50) {
-        if (rafId) cancelAnimationFrame(rafId);
-        rafId = requestAnimationFrame(() => {
-          const modal = container.querySelector(".image-deck-metadata-modal");
-          if (modal && !modal.classList.contains("active")) {
-            modal.style.transform = `translateY(${Math.max(touchDeltaY, -200)}px)`;
-            modal.style.opacity = Math.min(Math.abs(touchDeltaY) / 150, 1);
-          }
-        });
-      }
-    }, { passive: true });
-    swiperEl.addEventListener("touchend", () => {
-      if (rafId) cancelAnimationFrame(rafId);
-      if (touchDeltaY > 150) {
-        closeDeck();
-      } else if (touchDeltaY < -100) {
-        openMetadataModal();
-      } else {
-        requestAnimationFrame(() => {
-          container.style.transform = "";
-          container.style.opacity = "";
-          const modal = container.querySelector(".image-deck-metadata-modal");
-          if (modal && !modal.classList.contains("active")) {
-            modal.style.transform = "";
-            modal.style.opacity = "";
-          }
-        });
-      }
-      touchDeltaY = 0;
-    }, { passive: true });
-  }
-  function handleKeyboard(e) {
-    if (!currentSwiper) return;
-    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") {
-      if (e.key === "Escape") {
-        closeMetadataModal();
-      }
+  });
+
+  // button.js
+  init_context();
+  var retryTimer = null;
+  function createLaunchButton() {
+    console.log("[Image Deck] Creating launch button...");
+    const context = detectContext();
+    const hasImages = document.querySelectorAll('img[src*="/image/"]').length > 0;
+    const hasGalleryCovers = document.querySelectorAll(".gallery-cover img, .gallery-card img").length > 0;
+    console.log("[Image Deck] Context detection result:", context);
+    console.log("[Image Deck] Has images:", hasImages);
+    console.log("[Image Deck] Has gallery covers:", hasGalleryCovers);
+    if (!context && !hasImages && !hasGalleryCovers) {
+      console.log("[Image Deck] Not on relevant page, removing button if exists");
+      const existing2 = document.querySelector(".image-deck-launch-btn");
+      if (existing2) existing2.remove();
       return;
     }
-    switch (e.key) {
-      case "Escape":
-        const modal = document.querySelector(".image-deck-metadata-modal");
-        if (modal && modal.classList.contains("active")) {
-          closeMetadataModal();
-        } else {
-          closeDeck();
-        }
-        break;
-      case " ":
-        e.preventDefault();
-        if (isAutoPlaying) {
-          stopAutoPlay();
-        } else {
-          startAutoPlay();
-        }
-        break;
-      case "i":
-      case "I":
-        e.preventDefault();
-        const metadataModal = document.querySelector(".image-deck-metadata-modal");
-        if (metadataModal && metadataModal.classList.contains("active")) {
-          closeMetadataModal();
-        } else {
-          openMetadataModal();
-        }
-        break;
+    const existing = document.querySelector(".image-deck-launch-btn");
+    if (existing) {
+      console.log("[Image Deck] Removing existing button");
+      existing.remove();
     }
+    const button = document.createElement("button");
+    button.className = "image-deck-launch-btn";
+    button.innerHTML = "\u{1F3B4}";
+    button.title = "Open Image Deck";
+    button.addEventListener("click", function(e) {
+      console.log("[Image Deck] Launch button clicked!");
+      Promise.resolve().then(() => (init_deck(), deck_exports)).then((module) => {
+        module.openDeck();
+      });
+    });
+    document.body.appendChild(button);
+    console.log("[Image Deck] Launch button created successfully");
+  }
+  function retryCreateButton(attempts = 0, maxAttempts = 5) {
+    const delays = [100, 300, 500, 1e3, 2e3];
+    if (attempts >= maxAttempts) {
+      console.log("[Image Deck] Max retry attempts reached");
+      return;
+    }
+    const hasContext = detectContext();
+    const hasImages = document.querySelectorAll('img[src*="/image/"]').length > 0;
+    const hasGalleryCovers = document.querySelectorAll(".gallery-cover img, .gallery-card img").length > 0;
+    if (hasContext || hasImages || hasGalleryCovers) {
+      createLaunchButton();
+    } else if (attempts < maxAttempts - 1) {
+      clearTimeout(retryTimer);
+      retryTimer = setTimeout(() => retryCreateButton(attempts + 1, maxAttempts), delays[attempts]);
+    }
+  }
+
+  // ui.js
+  init_deck();
+  function initialize() {
+    console.log("[Image Deck] Initializing...");
+    if (typeof Swiper === "undefined") {
+      console.error("[Image Deck] Swiper not loaded!");
+      return;
+    }
+    retryCreateButton();
+    let debounceTimer;
+    const observer = new MutationObserver((mutations) => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        const hasButton = document.querySelector(".image-deck-launch-btn");
+        const shouldHaveButton = document.querySelectorAll('img[src*="/image/"]').length > 0 || document.querySelectorAll(".gallery-cover img, .gallery-card img").length > 0;
+        if (!hasButton && shouldHaveButton) {
+          createLaunchButton();
+        }
+      }, 300);
+    });
+    const mainContent = document.querySelector(".main-content") || document.querySelector('[role="main"]') || document.body;
+    observer.observe(mainContent, {
+      childList: true,
+      subtree: true
+      // Watch subtree to catch React updates
+    });
+    console.log("[Image Deck] Initialized");
   }
 
   // main.js
