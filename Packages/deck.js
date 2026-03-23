@@ -131,6 +131,8 @@ export async function openDeck() {
 
         // Initialize Swiper
         currentSwiper = initSwiper(container, currentImages, pluginConfig, updateUI, savePosition, contextInfo);
+		
+		window.currentSwiperInstance = currentSwiper;
         
         // Restore position
         restorePosition();
@@ -252,20 +254,16 @@ function updateUI(container) {
 }
 
 function checkAndLoadNextChunk() {
-    if (!currentSwiper) return;
+    if (!currentSwiper || isChunkLoading) return;
     
     const currentIndex = currentSwiper.activeIndex;
     const totalCurrentSlides = currentImages.length;
     
-    // If we're within 5 slides of the end, try to load next chunk
-    if (currentIndex >= totalCurrentSlides - 5 && currentChunkPage < totalPages) {
-        const nextChunkBtn = document.querySelector('[data-action="next-chunk"]');
-        if (nextChunkBtn && !nextChunkBtn.disabled) {
-            console.log('[Image Deck] Approaching end, preloading next chunk...');
-            setTimeout(() => {
-                if (nextChunkBtn) nextChunkBtn.click();
-            }, 500);
-        }
+    // 1. Only trigger if we are in the last few slides
+    // 2. Only trigger if there actually ARE more pages to fetch
+    if (currentIndex >= totalCurrentSlides - 3 && currentChunkPage < totalPages) {
+        console.log('[Image Deck] Auto-loading next chunk...');
+        loadNextChunk(); 
     }
 }
 
@@ -332,144 +330,98 @@ function restorePosition() {
 }
 
 // Load next chunk of images
+// Add this to your module-level variables at the top of the file
+let isChunkLoading = false; 
+
 export async function loadNextChunk() {
-    console.log('[Image Deck] Attempting to load next chunk');
-    
-    // Always use the stored context info as primary source
-    const contextToUse = storedContextInfo || contextInfo || detectContext();
-    
-    if (!contextToUse) {
-        console.log('[Image Deck] No context info available');
-        // Try to detect context again as fallback
-        const freshContext = detectContext();
-        if (!freshContext) {
-            console.log('[Image Deck] Could not detect context');
-            const loadingIndicator = document.querySelector('.image-deck-loading');
-            if (loadingIndicator) {
-                loadingIndicator.textContent = 'Cannot detect context';
-                setTimeout(() => {
-                    loadingIndicator.style.display = 'none';
-                }, 2000);
-            }
-            return;
-        }
-        storedContextInfo = freshContext; // Store the fresh context
-        contextInfo = freshContext;
+    // 1. Guard: Prevent multiple simultaneous loads
+    if (isChunkLoading) {
+        console.log('[Image Deck] Load already in progress, skipping...');
+        return;
     }
 
-    console.log('[Image Deck] Loading chunk', (currentChunkPage + 1), 'with context:', contextToUse);
-    
+    // 2. Guard: Check if we've actually reached the end of available content
+    if (currentChunkPage >= totalPages && totalPages !== 0) {
+        console.log('[Image Deck] All chunks already loaded.');
+        return;
+    }
+
+    console.log('[Image Deck] Starting to load next chunk...');
+    isChunkLoading = true;
+
+    // UI Feedback: Update the button and loading indicator
     const loadingIndicator = document.querySelector('.image-deck-loading');
+    const nextChunkButton = document.querySelector('[data-action="next-chunk"]');
+    
     if (loadingIndicator) {
         loadingIndicator.style.display = 'block';
         loadingIndicator.textContent = 'Loading next chunk...';
-        // Add visual feedback that loading started
-        loadingIndicator.style.backgroundColor = 'rgba(100, 100, 255, 0.3)';
-        loadingIndicator.style.color = 'white';
-        loadingIndicator.style.fontWeight = 'bold';
+        loadingIndicator.style.backgroundColor = 'rgba(100, 100, 255, 0.4)';
     }
 
-    // Also provide immediate visual feedback on the next-chunk button
-    const nextChunkButton = document.querySelector('[data-action="next-chunk"]');
     if (nextChunkButton) {
-        nextChunkButton.innerHTML = '🔄'; // Show loading spinner
+        nextChunkButton.innerHTML = '🔄'; 
         nextChunkButton.disabled = true;
         nextChunkButton.style.opacity = '0.5';
     }
 
     try {
+        const contextToUse = storedContextInfo || contextInfo || detectContext();
+        if (!contextToUse) throw new Error('Could not detect context for fetching');
+
         const nextPage = currentChunkPage + 1;
-        console.log('[Image Deck] Fetching page', nextPage, 'with chunk size', chunkSize);
-        
         const result = await fetchContextImages(contextToUse, nextPage, chunkSize);
-        
-        console.log('[Image Deck] Fetched chunk result:', result);
-        
-        // Check if there are more images to load
+
         if (!result || !result.images || result.images.length === 0) {
-            console.log('[Image Deck] No more images to load (empty result)');
-            if (loadingIndicator) {
-                loadingIndicator.textContent = 'No more images to load';
-                loadingIndicator.style.backgroundColor = 'rgba(255, 100, 100, 0.3)'; // Red for error/info
-                setTimeout(() => {
-                    loadingIndicator.style.display = 'none';
-                }, 2000);
-            }
+            if (loadingIndicator) loadingIndicator.textContent = 'No more images found';
             return;
         }
-        
-        // Add new images to currentImages array
-        const oldLength = currentImages.length;
+
+        // 3. Update Data State
         currentImages.push(...result.images);
         totalImageCount = result.totalCount || totalImageCount;
         totalPages = result.totalPages || totalPages;
-        currentChunkPage = nextPage; // Update the current page
-        
-        console.log(`[Image Deck] Added ${result.images.length} new images, total: ${currentImages.length}`);
-        
-        // Update swiper with new images - SPECIFICALLY FOR VIRTUAL SLIDES
-        if (currentSwiper && currentSwiper.virtual && result.images.length > 0) {
-            // Create new slide HTML for virtual swiper
+        currentChunkPage = nextPage;
+
+        // 4. Update Swiper (Crucial for Virtual Slides)
+        if (currentSwiper && currentSwiper.virtual) {
             const newSlides = result.images.map(img => {
                 const fullSrc = img.paths.image;
-                // Make sure the image has proper styling
-                return `<div class="swiper-zoom-container"><img src="${fullSrc}" alt="${img.title || ''}" decoding="async" loading="lazy" style="max-width: 100%; height: auto; display: block; margin: 0 auto;" /></div>`;
+                return `<div class="swiper-zoom-container">
+                            <img src="${fullSrc}" 
+                                 alt="${img.title || ''}" 
+                                 decoding="async" 
+                                 loading="lazy" />
+                        </div>`;
             });
-            
-            // Add new slides to virtual swiper
+
             currentSwiper.virtual.slides.push(...newSlides);
-            
-            // Force update virtual swiper
-            currentSwiper.virtual.update(true); // Force update
-            
-            console.log(`[Image Deck] Added ${newSlides.length} virtual slides`);
+            currentSwiper.virtual.update(true); 
         }
-        
-        // Update UI
+
+        // 5. Success UI Feedback
+        if (loadingIndicator) {
+            loadingIndicator.textContent = `✓ Loaded ${result.images.length} new images`;
+            loadingIndicator.style.backgroundColor = 'rgba(100, 255, 100, 0.3)';
+            setTimeout(() => { loadingIndicator.style.display = 'none'; }, 2000);
+        }
+
         const container = document.querySelector('.image-deck-container');
-        if (container) {
-            updateUI(container);
-        }
-        
-        // Success feedback
-        if (loadingIndicator) {
-            loadingIndicator.textContent = `✓ Loaded ${result.images.length} images (chunk ${nextPage})`;
-            loadingIndicator.style.backgroundColor = 'rgba(100, 255, 100, 0.3)'; // Green for success
-            // Auto-hide after 2 seconds
-            setTimeout(() => {
-                loadingIndicator.style.display = 'none';
-            }, 2000);
-        }
-        
-        console.log(`[Image Deck] Successfully loaded chunk ${nextPage}, total images: ${currentImages.length}`);
-        
+        if (container) updateUI(container);
+
     } catch (error) {
-        console.error('[Image Deck] Error loading next chunk:', error);
-        const loadingIndicator = document.querySelector('.image-deck-loading');
+        console.error('[Image Deck] Failed to load chunk:', error);
         if (loadingIndicator) {
-            loadingIndicator.textContent = 'Error loading chunk: ' + (error.message || 'Unknown error');
-            loadingIndicator.style.backgroundColor = 'rgba(255, 100, 100, 0.3)'; // Red for error
-            setTimeout(() => {
-                loadingIndicator.style.display = 'none';
-            }, 3000);
+            loadingIndicator.textContent = 'Error: ' + error.message;
+            loadingIndicator.style.backgroundColor = 'rgba(255, 100, 100, 0.4)';
         }
     } finally {
-        // Re-enable the next-chunk button
-        const nextChunkButton = document.querySelector('[data-action="next-chunk"]');
+        // 6. Release the lock and restore UI
+        isChunkLoading = false;
         if (nextChunkButton) {
-            nextChunkButton.innerHTML = '⏭️'; // Restore original icon
+            nextChunkButton.innerHTML = '⏭️';
             nextChunkButton.disabled = false;
             nextChunkButton.style.opacity = '1';
-        }
-        
-        // Ensure loading indicator hides even if there was an error
-        const loadingIndicator = document.querySelector('.image-deck-loading');
-        if (loadingIndicator) {
-            setTimeout(() => {
-                if (loadingIndicator.style.display !== 'none') {
-                    loadingIndicator.style.display = 'none';
-                }
-            }, 3000);
         }
     }
 }
