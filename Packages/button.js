@@ -3,17 +3,44 @@ import { detectContext, fetchContextImages, getVisibleImages, getVisibleGalleryC
 
 let retryTimer = null;
 
+// 1. Update the Observer to use the retry logic instead of the direct call
+const observer = new MutationObserver(() => {
+    // Check if we are even on an allowed path first to avoid unnecessary timers
+    const path = window.location.pathname;
+    if (path.startsWith('/galleries') || path.startsWith('/images')) {
+        // Only trigger retry if the button isn't already there
+        if (!document.getElementById("image-deck-nav-btn")) {
+            retryCreateButton();
+        }
+    } else {
+        // If we navigated away, clean up immediately
+        cleanupButton();
+    }
+});
+
+// 2. Start the observer
+observer.observe(document.body, { childList: true, subtree: true });
+
 export function createLaunchButton() {
     const buttonId = "image-deck-nav-btn";
     const existing = document.getElementById(buttonId);
     
+    const path = window.location.pathname;
+    const isAllowedPath = path.startsWith('/galleries') || path.startsWith('/images');
+
+    if (!isAllowedPath) {
+        cleanupButton();
+        return;
+    }
+
+    // Double check that we actually have images before drawing
     const context = detectContext();
     const hasImages = document.querySelectorAll('img[src*="/image/"]').length > 0;
     const hasGalleryCovers = document.querySelectorAll('.gallery-cover img, .gallery-card img').length > 0;
     
     if (!context && !hasImages && !hasGalleryCovers) {
-        if (existing) existing.closest(".nav-link")?.remove();
-        return;
+        // Don't remove here if we are in the middle of a retry loop
+        return; 
     }
 
     if (existing) return;
@@ -43,11 +70,9 @@ export function createLaunchButton() {
         </a>
     `;
 
-    const button = buttonContainer.querySelector(`#${buttonId}`);
-    button.addEventListener('click', function(e) {
-        import('./deck.js').then(module => {
-            module.openDeck();
-        });
+const button = buttonContainer.querySelector(`#${buttonId}`);
+    button.addEventListener('click', (e) => {
+        import('./deck.js').then(module => module.openDeck());
     });
 
     const navTarget = document.querySelector(".navbar-nav");
@@ -62,15 +87,23 @@ export function cleanupButton() {
 }
 
 export function retryCreateButton(attempts = 0, maxAttempts = 5) {
-    const delays = [100, 300, 500, 1000, 2000];
+    const path = window.location.pathname;
+    const isAllowed = path.startsWith('/galleries') || path.startsWith('/images');
+    
+    if (!isAllowed) {
+        cleanupButton();
+        return;
+    }
+
     const hasContext = detectContext() || 
-                      document.querySelectorAll('img[src*="/image/"]').length > 0 || 
-                      document.querySelectorAll('.gallery-cover img, .gallery-card img').length > 0;
+                       document.querySelectorAll('img[src*="/image/"]').length > 0 || 
+                       document.querySelectorAll('.gallery-cover img, .gallery-card img').length > 0;
 
     if (hasContext) {
         createLaunchButton();
     } else if (attempts < maxAttempts - 1) {
         clearTimeout(retryTimer);
+        const delays = [100, 300, 500, 1000, 2000];
         retryTimer = setTimeout(() => retryCreateButton(attempts + 1, maxAttempts), delays[attempts]);
     }
 }
