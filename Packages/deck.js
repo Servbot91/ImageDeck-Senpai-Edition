@@ -38,33 +38,73 @@ export async function openDeck() {
         injectDynamicStyles(pluginConfig);
 
         // 1. Context Detection Logic
-let detectedContext = detectContext();
+        let detectedContext = detectContext();
 
-// If we are on a gallery listing page, ensure detectContext 
-// has correctly identified it. If not, we force the refresh here.
-if (window.location.pathname === '/galleries' && !detectedContext?.isGalleryListing) {
-    detectedContext = {
-        type: 'galleries',
-        isGalleryListing: true,
-        filter: parseUrlFilters(window.location.search) // This is the crucial part
-    };
-}
+        // Special handling for performer pages
+        const path = window.location.pathname;
+        if (path.match(/^\/performers\/\d+/) && !detectedContext) {
+            const performerMatch = path.match(/^\/performers\/(\d+)/);
+            if (performerMatch) {
+                const performerId = performerMatch[1];
+                // Determine if we're on images or galleries tab
+                const isImagesTab = path.includes('/images') || 
+                                   window.location.hash.includes('images') ||
+                                   document.querySelector('.nav-tabs .active')?.textContent?.includes('Images');
+                const isGalleriesTab = path.includes('/galleries') || 
+                                      window.location.hash.includes('galleries') ||
+                                      document.querySelector('.nav-tabs .active')?.textContent?.includes('Galleries');
+                
+                const type = isGalleriesTab ? 'galleries' : 'images';
+                
+                detectedContext = {
+                    type: type,
+                    id: performerId,
+                    performerId: performerId,
+                    isPerformerContext: true,
+                    filter: {
+                        performers: { value: [performerId], modifier: "INCLUDES" },
+                        sortBy: 'created_at',
+                        sortDir: 'desc'
+                    }
+                };
+                
+                // Parse URL parameters for sorting
+                const params = new URLSearchParams(window.location.search);
+                if (params.has('sortby')) {
+                    detectedContext.filter.sortBy = params.get('sortby');
+                }
+                if (params.has('sortdir')) {
+                    detectedContext.filter.sortDir = params.get('sortdir');
+                }
+            }
+        }
 
-storedContextInfo = detectedContext;
-contextInfo = detectedContext;
-console.log('[Image Deck] Context assigned:', contextInfo);
+        // If we are on a gallery listing page, ensure detectContext 
+        // has correctly identified it. If not, we force the refresh here.
+        if (window.location.pathname === '/galleries' && !detectedContext?.isGalleryListing) {
+            detectedContext = {
+                type: 'galleries',
+                isGalleryListing: true,
+                filter: parseUrlFilters(window.location.search) // This is the crucial part
+            };
+        }
 
-// 2. Determine what content to show
-let imageResult;
+        storedContextInfo = detectedContext;
+        contextInfo = detectedContext;
+        console.log('[Image Deck] Context assigned:', contextInfo);
 
-// Ensure this check includes your gallery listing
-const isListContext = contextInfo && (
-    contextInfo.isSingleGallery || 
-    contextInfo.isGalleryListing || 
-    contextInfo.type === 'images' || 
-    contextInfo.isFilteredView ||
-    window.location.pathname.startsWith('/images') // Added this
-);
+        // 2. Determine what content to show
+        let imageResult;
+
+        // Ensure this check includes your gallery listing
+        const isListContext = contextInfo && (
+            contextInfo.isSingleGallery || 
+            contextInfo.isGalleryListing || 
+            contextInfo.type === 'images' || 
+            contextInfo.isFilteredView ||
+            contextInfo.isPerformerContext || // Add performer context
+            window.location.pathname.startsWith('/images') // Added this
+        );
 
         if (isListContext) {
             console.log('[Image Deck] Using context-based fetching for page 1');
@@ -115,7 +155,7 @@ const isListContext = contextInfo && (
         
         window.currentSwiperInstance = currentSwiper;
         window.currentImages = currentImages;
-		setCurrentSwiper(currentSwiper);
+        setCurrentSwiper(currentSwiper);
         // Restore position
         restorePosition();
 
@@ -183,6 +223,7 @@ function createDeckUI() {
 
 // Update UI elements - debounced to prevent flicker
 	let uiUpdatePending = false;
+	
 function updateUI(container) {
     if (!currentSwiper || uiUpdatePending) return;
 
@@ -373,22 +414,22 @@ export async function loadNextChunk(container = null) {
         // 4. Update UI (Swiper OR Gallery)
         if (currentSwiper && currentSwiper.virtual) {
             // Re-generate ALL slides to ensure formatting consistency across the whole deck
-const allSlides = currentImages.map(img => {
-    const fullSrc = img.paths.image;
-    const isGallery = img.url && !contextInfo?.isSingleGallery;
-    const title = img.title || 'Untitled';
-    const loading = 'lazy'; // Consistent with getSlideTemplate
+			const allSlides = currentImages.map(img => {
+			const fullSrc = img.paths.image;
+			const isGallery = img.url && !contextInfo?.isSingleGallery;
+			const title = img.title || 'Untitled';
+			const loading = 'lazy'; // Consistent with getSlideTemplate
 
-    if (isGallery) {
-        // Use the same template structure as getSlideTemplate
-        const imageCountDisplay = img.image_count !== undefined ? 
-            `${GALLERY_ICON_SVG}: ${img.image_count}` : '';
-        
-        let performerDisplay = '';
-        if (img.performers && img.performers.length > 0) {
-            const performerNames = img.performers.map(p => p.name).join(', ');
-            performerDisplay = `<div class="gallery-performers" style="margin-top: 5px; font-size: 18px; color: #ccc;">${performerNames}</div>`;
-        }
+			if (isGallery) {
+				// Use the same template structure as getSlideTemplate
+				const imageCountDisplay = img.image_count !== undefined ? 
+					`${GALLERY_ICON_SVG}: ${img.image_count}` : '';
+				
+				let performerDisplay = '';
+				if (img.performers && img.performers.length > 0) {
+					const performerNames = img.performers.map(p => p.name).join(', ');
+					performerDisplay = `<div class="gallery-performers" style="margin-top: 5px; font-size: 18px; color: #ccc;">${performerNames}</div>`;
+				}
         
         return `
             <div class="swiper-zoom-container" data-type="gallery" data-url="${img.url}">
