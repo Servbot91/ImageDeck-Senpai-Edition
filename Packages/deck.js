@@ -219,8 +219,8 @@ function createDeckUI() {
         </div>
         <div class="image-deck-controls-wrapper">
             <div class="image-deck-zoom-controls">
-                <button class="image-deck-control-btn" data-action="zoom-in" title="Zoom In (+)">+</button>
-                <button class="image-deck-control-btn" data-action="zoom-out" title="Zoom Out (-)">-</button>
+                <button class="image-deck-control-btn" data-action="zoom-in" title="Zoom In (+)">➕</button>
+                <button class="image-deck-control-btn" data-action="zoom-out" title="Zoom Out (-)">➖</button>
             </div>
             <div class="image-deck-navigation-controls">
                 <button class="image-deck-control-btn" data-action="prev">◀</button>
