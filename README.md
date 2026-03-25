@@ -19,7 +19,7 @@ Everything was tested then started again with new context from scratch if there 
 - Added Mouse wheel functionality
 - Added zoom functionality for mobile and desktop (buttons respect context ie no zoom on galleries)
 - Swipe and pinch gestures on mobile functional
-- Added Gallery support
+- Added Gallery support and viewbox
 - Galleries display performer name and image count and clicking\selecting them will open the respective gallery
 - Added keyboard support (strict)
 - Supports SFW Plugin
@@ -35,13 +35,13 @@ Everything was tested then started again with new context from scratch if there 
 	- Chunk system has a safety check to prevent backend query spam and will skip if a chunk load is in progress
 	- Can manually load the next chunk via button
 - Removed particles and nonsense effects and buttons such as strobe.
-- Further reduced code stack (needs further improvementGive )
+- Further reduced code stack (needs further improvement)
 - Backend GraphQL is properly using stash schema rather than guessing
 ---
 ### QOL Improvements
 
 - Respects filter context 
-	- Note: For the most part, it will not work if you have an exclusion in front of your inclusion meaning the INCLUDE must come before the EXCLUDE or no exclude at all for it to properly function. if the include is after the include, it should work. **If someone out there smarter than me can fix this please help.**
+	- Note: For the most part, it will not work if you have an exclusion in front of your inclusion meaning the INCLUDE must come before the EXCLUDE or no exclude at all for it to properly function. If an include is after another include, it should work. **If someone out there smarter than me can fix this please help.**
 	- Respects ASC\DESC Sort
 - Split up the image-deck.js into a more manageable format
 	- button.js
