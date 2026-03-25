@@ -20,8 +20,14 @@
     }
     if (path.startsWith("/galleries")) {
       const galleryIdMatch = path.match(/^\/galleries\/(\d+)/);
+      const params = new URLSearchParams(search);
       if (galleryIdMatch) {
-        return { type: "galleries", id: galleryIdMatch[1], hash, isSingleGallery: true };
+        const filter = parseUrlFilters2(search);
+        if (!params.get("sortby") && !params.get("sortdir")) {
+          filter.sortBy = "title";
+          filter.sortDir = "asc";
+        }
+        return { type: "galleries", id: galleryIdMatch[1], hash, isSingleGallery: true, filter };
       } else {
         const filters = parseUrlFilters2(search);
         return { type: "galleries", isGalleryListing: true, filter: filters, hash };
