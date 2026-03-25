@@ -39,6 +39,31 @@
         hash
       };
     }
+    const performerMatch = path.match(/^\/performers\/(\d+)(?:\/(galleries|images))?/);
+    if (performerMatch) {
+      const [, performerId, tab] = performerMatch;
+      const isImagesTab = tab === "images" || hash.includes("images") || document.querySelector(".nav-tabs .active")?.textContent?.includes("Images");
+      const isGalleriesTab = tab === "galleries" || hash.includes("galleries") || document.querySelector(".nav-tabs .active")?.textContent?.includes("Galleries");
+      const activeTab = isGalleriesTab ? "galleries" : "images";
+      const filter = {
+        performers: { value: [performerId], modifier: "INCLUDES" }
+      };
+      const params = new URLSearchParams(search);
+      if (params.has("sortby")) {
+        filter.sortBy = params.get("sortby");
+      }
+      if (params.has("sortdir")) {
+        filter.sortDir = params.get("sortdir");
+      }
+      return {
+        type: activeTab,
+        id: performerId,
+        filter,
+        isPerformerContext: true,
+        performerId,
+        hash
+      };
+    }
     const idMatch = path.match(/\/(\w+)\/(\d+)/);
     if (idMatch) {
       const [, type, id] = idMatch;
@@ -432,6 +457,54 @@
             );
         }
         
+        /* New control layout styles */
+        .image-deck-controls-wrapper {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            z-index: 1002;
+        }
+        
+        .image-deck-zoom-controls {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .image-deck-navigation-controls {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .image-deck-control-btn {
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.2s ease;
+            backdrop-filter: blur(5px);
+        }
+        
+        .image-deck-control-btn:hover {
+            background: rgba(50, 50, 50, 0.9);
+            transform: scale(1.1);
+        }
+        
+        .image-deck-control-btn:active {
+            transform: scale(0.95);
+        }
+        
         /* Gallery cover styles */
         .gallery-cover-container {
             display: flex;
@@ -460,8 +533,8 @@
         .gallery-cover-link {
             display: inline-block;
             max-width: 300px;
-            max-height: 500px; /* Increased height by ~200px */
-            aspect-ratio: 3 / 5; /* More rectangular shape */
+            max-height: 500px;
+            aspect-ratio: 3 / 5;
             border: 3px solid #6a5acd;
             border-radius: 8px;
             box-shadow: 0 0 15px rgba(106, 90, 205, 0.7);
@@ -498,6 +571,12 @@
                 font-size: 14px;
                 padding: 4px 8px;
             }
+            
+            .image-deck-control-btn {
+                width: 35px;
+                height: 35px;
+                font-size: 14px;
+            }
         }
         
         @media (max-width: 480px) {
@@ -514,6 +593,19 @@
                 font-size: 12px;
                 padding: 3px 6px;
             }
+            
+            .image-deck-control-btn {
+                width: 30px;
+                height: 30px;
+                font-size: 12px;
+            }
+        }
+        
+        /* Transition for fading UI elements */
+        .image-deck-topbar,
+        .image-deck-controls-wrapper,
+        .image-deck-speed {
+            transition: opacity 0.3s ease;
         }
     `;
   }
@@ -522,120 +614,6 @@
     "config.js"() {
       init_utils();
       PLUGIN_NAME = "image-deck";
-    }
-  });
-
-  // swiper.js
-  function getEffectOptions(effect, pluginConfig2) {
-    const configFn = EFFECT_CONFIGS[effect] || EFFECT_CONFIGS.default;
-    return configFn(pluginConfig2.effectDepth);
-  }
-  function initSwiper(container, images, pluginConfig2, updateUICallback, savePositionCallback, contextInfo2) {
-    const swiperEl = container.querySelector(".swiper");
-    if (!swiperEl || swiperEl.swiper) return swiperEl?.swiper;
-    const isLooped = false;
-    const effectOptions = getEffectOptions(pluginConfig2.transitionEffect, pluginConfig2);
-    const swiperConfig = {
-      // Core Layout
-      effect: pluginConfig2.transitionEffect,
-      centeredSlides: true,
-      slidesPerView: 1,
-      initialSlide: 0,
-      // Zoom functionality
-      zoom: {
-        maxRatio: 3,
-        minRatio: 1,
-        toggle: true,
-        containerClass: "swiper-zoom-container",
-        zoomedSlideClass: "swiper-slide-zoomed"
-      },
-      // Center Fixes
-      centeredSlidesBounds: true,
-      centerInsufficientSlides: true,
-      // Loop + Virtual Stability
-      loop: isLooped,
-      loopedSlides: 2,
-      loopPreventsSliding: false,
-      virtual: {
-        slides: images.map((img) => getSlideTemplate(img, contextInfo2, false)),
-        cache: true,
-        addSlidesBefore: 3,
-        addSlidesAfter: 3,
-        renderSlide: (slideContent, index) => {
-          return `<div class="swiper-slide" data-index="${index}">${slideContent || ""}</div>`;
-        }
-      },
-      ...effectOptions,
-      on: {
-        click(s, event) {
-          const zoomContainer = event.target.closest('.swiper-zoom-container[data-type="gallery"]');
-          if (zoomContainer?.dataset.url) {
-            window.open(zoomContainer.dataset.url, "_blank");
-          }
-        },
-        slideChange() {
-          updateUICallback?.(container);
-          savePositionCallback?.();
-        },
-        // Handle infinite loading/pagination logic
-        slideChangeTransitionEnd() {
-          const total = this.virtual?.slides?.length || this.slides.length;
-          if (total > 0 && this.activeIndex >= total - 3) {
-            const nextBtn = document.querySelector('[data-action="next-chunk"]');
-            if (nextBtn && !nextBtn.disabled) {
-              nextBtn.click();
-            }
-          }
-        }
-      }
-    };
-    const swiper = new Swiper(swiperEl, swiperConfig);
-    const loader = container.querySelector(".image-deck-loading");
-    if (loader) loader.style.display = "none";
-    return swiper;
-  }
-  var GALLERY_ICON_SVG, EFFECT_CONFIGS, getSlideTemplate;
-  var init_swiper = __esm({
-    "swiper.js"() {
-      GALLERY_ICON_SVG = '<svg fill="white" width="16" height="16" viewBox="0 0 36 36" style="vertical-align: middle;" xmlns="http://www.w3.org/2000/svg"><path d="M32,4H4A2,2,0,0,0,2,6V30a2,2,0,0,0,2,2H32a2,2,0,0,0,2-2V6A2,2,0,0,0,32,4ZM4,30V6H32V30Z"></path><path d="M8.92,14a3,3,0,1,0-3-3A3,3,0,0,0,8.92,14Zm0-4.6A1.6,1.6,0,1,1,7.33,11,1.6,1.6,0,0,1,8.92,9.41Z"></path><path d="M22.78,15.37l-5.4,5.4-4-4a1,1,0,0,0-1.41,0L5.92,22.9v2.83l6.79-6.79L16,22.18l-3.75,3.75H15l8.45-8.45L30,24V21.18l-5.81-5.81A1,1,0,0,0,22.78,15.37Z"></path></svg>';
-      EFFECT_CONFIGS = {
-        cards: () => ({ cardsEffect: { slideShadows: false, rotate: true, perSlideRotate: 2, perSlideOffset: 8 } }),
-        coverflow: (depth) => ({ coverflowEffect: { rotate: 30, stretch: 0, depth: Math.min(depth, 100), modifier: 1, slideShadows: false } }),
-        flip: () => ({ flipEffect: { slideShadows: false, limitRotation: true } }),
-        cube: () => ({ cubeEffect: { shadow: false, slideShadows: false } }),
-        fade: () => ({ fadeEffect: { crossFade: true }, speed: 200 }),
-        default: () => ({ spaceBetween: 20, slidesPerView: 1 })
-      };
-      getSlideTemplate = (img, contextInfo2, isEager = false) => {
-        const fullSrc = img.paths.image;
-        const isGallery = img.url && !contextInfo2?.isSingleGallery;
-        const loading = isEager ? "eager" : "lazy";
-        const title = img.title || "Untitled";
-        if (isGallery) {
-          const imageCountDisplay = img.image_count !== void 0 ? `${GALLERY_ICON_SVG}: ${img.image_count}` : "";
-          let performerDisplay = "";
-          if (img.performers && img.performers.length > 0) {
-            const performerNames = img.performers.map((p) => p.name).join(", ");
-            performerDisplay = `<div class="gallery-performers" style="margin-top: 5px; font-size: 18px; color: #ccc;">${performerNames}</div>`;
-          }
-          return `
-            <div class="swiper-zoom-container" data-type="gallery" data-url="${img.url}">
-                <div class="gallery-cover-container">
-                    <div class="gallery-cover-title" title="${title}">${title}</div>
-                    ${imageCountDisplay ? `<div class="gallery-image-count" style="font-size: 18px; color: #ccc; margin-top: 3px;">${imageCountDisplay}</div>` : ""}
-                    <a href="${img.url}" target="_blank" class="gallery-cover-link">
-                        <img src="${fullSrc}" alt="${title}" decoding="async" loading="${loading}" />
-                    </a>
-                    ${performerDisplay}
-                </div>
-            </div>`;
-        }
-        return `
-        <div class="swiper-zoom-container">
-            <img src="${fullSrc}" alt="${title}" decoding="async" loading="${loading}" 
-                 style="max-width: 100%; height: auto; display: block; margin: 0 auto;" />
-        </div>`;
-      };
     }
   });
 
@@ -769,6 +747,9 @@
   });
 
   // metadata.js
+  function setCurrentSwiper(swiper) {
+    currentSwiperRef = swiper;
+  }
   async function openMetadataModal() {
     if (!currentSwiperRef) return;
     const currentIndex = currentSwiperRef.activeIndex;
@@ -950,6 +931,160 @@
     }
   });
 
+  // swiper.js
+  function getEffectOptions(effect, pluginConfig2) {
+    const configFn = EFFECT_CONFIGS[effect] || EFFECT_CONFIGS.default;
+    return configFn(pluginConfig2.effectDepth);
+  }
+  function initSwiper(container2, images, pluginConfig2, updateUICallback, savePositionCallback, contextInfo2) {
+    const swiperEl = container2.querySelector(".swiper");
+    if (!swiperEl || swiperEl.swiper) return swiperEl?.swiper;
+    const isLooped = false;
+    const effectOptions = getEffectOptions(pluginConfig2.transitionEffect, pluginConfig2);
+    const swiperConfig = {
+      // Core Layout
+      effect: pluginConfig2.transitionEffect,
+      centeredSlides: true,
+      slidesPerView: 1,
+      initialSlide: 0,
+      // Zoom functionality
+      zoom: {
+        maxRatio: 3,
+        minRatio: 1,
+        toggle: true,
+        containerClass: "swiper-zoom-container",
+        zoomedSlideClass: "swiper-slide-zoomed"
+      },
+      // Add double tap settings
+      doubleTapZoom: true,
+      doubleTapZoomRatio: 2,
+      // Center Fixes
+      centeredSlidesBounds: true,
+      centerInsufficientSlides: true,
+      // Touch settings for better mobile experience
+      touchRatio: 1,
+      touchAngle: 45,
+      simulateTouch: true,
+      shortSwipes: true,
+      longSwipes: true,
+      longSwipesRatio: 0.5,
+      longSwipesMs: 300,
+      // Prevent interference with pinch zoom
+      passiveListeners: false,
+      // Loop + Virtual Stability
+      loop: isLooped,
+      loopedSlides: 2,
+      loopPreventsSliding: false,
+      virtual: {
+        slides: images.map((img) => getSlideTemplate(img, contextInfo2, false)),
+        cache: true,
+        addSlidesBefore: 3,
+        addSlidesAfter: 3,
+        renderSlide: (slideContent, index) => {
+          return `<div class="swiper-slide" data-index="${index}">${slideContent || ""}</div>`;
+        }
+      },
+      ...effectOptions,
+      on: {
+        click(s, event) {
+          const zoomContainer = event.target.closest('.swiper-zoom-container[data-type="gallery"]');
+          if (zoomContainer?.dataset.url) {
+            window.open(zoomContainer.dataset.url, "_blank");
+          }
+        },
+        slideChange() {
+          updateUICallback?.(container2);
+          savePositionCallback?.();
+        },
+        // Handle infinite loading/pagination logic
+        slideChangeTransitionEnd() {
+          const total = this.virtual?.slides?.length || this.slides.length;
+          if (total > 0 && this.activeIndex >= total - 3) {
+            const nextBtn = document.querySelector('[data-action="next-chunk"]');
+            if (nextBtn && !nextBtn.disabled) {
+              nextBtn.click();
+            }
+          }
+        },
+        // Double tap handler
+        doubleTap: function(swiper2, event) {
+          console.log("[Image Deck] Double tap detected, scale:", swiper2.zoom.scale);
+          if (swiper2.zoom) {
+            const activeSlide = swiper2.slides[swiper2.activeIndex];
+            if (activeSlide) {
+              const zoomContainer = activeSlide.querySelector(".swiper-zoom-container");
+              if (zoomContainer && zoomContainer.dataset.type !== "gallery") {
+                if (swiper2.zoom.scale <= 1) {
+                  swiper2.zoom.in(swiper2.params.doubleTapZoomRatio || 2);
+                  console.log("[Image Deck] Zooming in to ratio:", swiper2.params.doubleTapZoomRatio || 2);
+                } else {
+                  swiper2.zoom.out();
+                  console.log("[Image Deck] Zooming out");
+                }
+              }
+            }
+          }
+        },
+        // Touch start handler
+        touchStart: function(swiper2, event) {
+          console.log("[Image Deck] Touch start");
+        },
+        // Touch end handler  
+        touchEnd: function(swiper2, event) {
+          console.log("[Image Deck] Touch end");
+        }
+      }
+    };
+    const swiper = new Swiper(swiperEl, swiperConfig);
+    const loader = container2.querySelector(".image-deck-loading");
+    if (loader) loader.style.display = "none";
+    return swiper;
+  }
+  var GALLERY_ICON_SVG, EFFECT_CONFIGS, getSlideTemplate;
+  var init_swiper = __esm({
+    "swiper.js"() {
+      GALLERY_ICON_SVG = '<svg fill="white" width="16" height="16" viewBox="0 0 36 36" style="vertical-align: middle;" xmlns="http://www.w3.org/2000/svg"><path d="M32,4H4A2,2,0,0,0,2,6V30a2,2,0,0,0,2,2H32a2,2,0,0,0,2-2V6A2,2,0,0,0,32,4ZM4,30V6H32V30Z"></path><path d="M8.92,14a3,3,0,1,0-3-3A3,3,0,0,0,8.92,14Zm0-4.6A1.6,1.6,0,1,1,7.33,11,1.6,1.6,0,0,1,8.92,9.41Z"></path><path d="M22.78,15.37l-5.4,5.4-4-4a1,1,0,0,0-1.41,0L5.92,22.9v2.83l6.79-6.79L16,22.18l-3.75,3.75H15l8.45-8.45L30,24V21.18l-5.81-5.81A1,1,0,0,0,22.78,15.37Z"></path></svg>';
+      EFFECT_CONFIGS = {
+        cards: () => ({ cardsEffect: { slideShadows: false, rotate: true, perSlideRotate: 2, perSlideOffset: 8 } }),
+        coverflow: (depth) => ({ coverflowEffect: { rotate: 30, stretch: 0, depth: Math.min(depth, 100), modifier: 1, slideShadows: false } }),
+        flip: () => ({ flipEffect: { slideShadows: false, limitRotation: true } }),
+        cube: () => ({ cubeEffect: { shadow: false, slideShadows: false } }),
+        fade: () => ({ fadeEffect: { crossFade: true }, speed: 200 }),
+        default: () => ({ spaceBetween: 20, slidesPerView: 1 })
+      };
+      getSlideTemplate = (img, contextInfo2, isEager = false) => {
+        const fullSrc = img.paths.image;
+        const isGallery = img.url && !contextInfo2?.isSingleGallery;
+        const loading = isEager ? "eager" : "lazy";
+        const title = img.title || "Untitled";
+        if (isGallery) {
+          const imageCountDisplay = img.image_count !== void 0 ? `${GALLERY_ICON_SVG}: ${img.image_count}` : "";
+          let performerDisplay = "";
+          if (img.performers && img.performers.length > 0) {
+            const performerNames = img.performers.map((p) => p.name).join(", ");
+            performerDisplay = `<div class="gallery-performers" style="margin-top: 5px; font-size: 18px; color: #ccc;">${performerNames}</div>`;
+          }
+          return `
+            <div class="swiper-zoom-container" data-type="gallery" data-url="${img.url}">
+                <div class="gallery-cover-container">
+                    <div class="gallery-cover-title" title="${title}">${title}</div>
+                    ${imageCountDisplay ? `<div class="gallery-image-count" style="font-size: 18px; color: #ccc; margin-top: 3px;">${imageCountDisplay}</div>` : ""}
+                    <a href="${img.url}" target="_blank" class="gallery-cover-link">
+                        <img src="${fullSrc}" alt="${title}" decoding="async" loading="${loading}" />
+                    </a>
+                    ${performerDisplay}
+                </div>
+            </div>`;
+        }
+        return `
+        <div class="swiper-zoom-container">
+            <img src="${fullSrc}" alt="${title}" decoding="async" loading="${loading}" 
+                 style="max-width: 100%; height: auto; display: block; margin: 0 auto;" />
+        </div>`;
+      };
+    }
+  });
+
   // controls.js
   var controls_exports = {};
   __export(controls_exports, {
@@ -958,14 +1093,32 @@
     setupEventHandlers: () => setupEventHandlers
   });
   function toggleFullscreen() {
-    const container = document.querySelector(".image-deck-container");
-    if (!container) return;
+    const container2 = document.querySelector(".image-deck-container");
+    if (!container2) return;
     if (!document.fullscreenElement) {
-      container.requestFullscreen().catch((err) => {
+      container2.requestFullscreen().catch((err) => {
         console.warn("[Image Deck] Fullscreen request failed:", err);
+      }).finally(() => {
+        updateFullscreenUI(true);
       });
     } else {
-      document.exitFullscreen();
+      document.exitFullscreen().finally(() => {
+        updateFullscreenUI(false);
+      });
+    }
+  }
+  function updateFullscreenUI(isFullscreen) {
+    const fullscreenBtn = document.querySelector(".image-deck-fullscreen");
+    if (fullscreenBtn) {
+      fullscreenBtn.textContent = isFullscreen ? "\u26F6" : "\u26F6";
+    }
+    const container2 = document.querySelector(".image-deck-container");
+    if (container2) {
+      if (isFullscreen) {
+        container2.classList.add("fullscreen-mode");
+      } else {
+        container2.classList.remove("fullscreen-mode");
+      }
     }
   }
   function isCurrentSlideGallery() {
@@ -982,29 +1135,29 @@
     return false;
   }
   function updateGalleryStateClass() {
-    const container = document.querySelector(".image-deck-container");
-    if (!container) return;
+    const container2 = document.querySelector(".image-deck-container");
+    if (!container2) return;
     if (isCurrentSlideGallery()) {
-      container.classList.add("gallery-active");
+      container2.classList.add("gallery-active");
     } else {
-      container.classList.remove("gallery-active");
+      container2.classList.remove("gallery-active");
     }
   }
-  function setupEventHandlers(container) {
+  function setupEventHandlers(container2) {
     setDeckActive(true);
-    const closeBtn = container.querySelector(".image-deck-close");
+    const closeBtn = container2.querySelector(".image-deck-close");
     if (closeBtn) {
       closeBtn.addEventListener("click", closeDeck);
     }
-    const fullscreenBtn = container.querySelector(".image-deck-fullscreen");
+    const fullscreenBtn = container2.querySelector(".image-deck-fullscreen");
     if (fullscreenBtn) {
       fullscreenBtn.addEventListener("click", toggleFullscreen);
     }
-    const metadataCloseBtn = container.querySelector(".image-deck-metadata-close");
+    const metadataCloseBtn = container2.querySelector(".image-deck-metadata-close");
     if (metadataCloseBtn) {
       metadataCloseBtn.addEventListener("click", closeMetadataModal);
     }
-    const controlButtons = container.querySelectorAll(".image-deck-control-btn");
+    const controlButtons = container2.querySelectorAll(".image-deck-control-btn");
     controlButtons.forEach((button) => {
       button.addEventListener("click", (e) => {
         const action = button.dataset.action;
@@ -1050,13 +1203,8 @@
               swiper.zoom.out();
             }
             break;
-          case "zoom-reset":
-            if (swiper && swiper.zoom && !isCurrentSlideGallery()) {
-              swiper.zoom.reset();
-            }
-            break;
           case "next-chunk":
-            loadNextChunk();
+            loadNextChunk(container2);
             break;
           default:
             console.log("[Image Deck] Unknown action:", action);
@@ -1073,45 +1221,96 @@
     }
     keyboardHandler = handleKeyboard;
     document.addEventListener("keydown", handleKeyboard, true);
-    setupSwipeGestures(container);
-    setupMouseWheel(container);
+    setupSwipeGestures(container2);
+    setupMouseWheel(container2);
   }
-  function setupSwipeGestures(container) {
+  function setupSwipeGestures(container2) {
     let touchStartY = 0;
+    let touchStartX = 0;
     let touchDeltaY = 0;
+    let touchDeltaX = 0;
     let rafId = null;
-    const swiperEl = container.querySelector(".image-deck-swiper");
+    let lastTouchTime = 0;
+    let lastTouchX = 0;
+    let lastTouchY = 0;
+    const swiperEl = container2.querySelector(".image-deck-swiper");
     if (!swiperEl) return;
     swiperEl.addEventListener("touchstart", (e) => {
+      if (e.touches.length > 1) return;
       if (e.target.closest(".image-deck-metadata-modal")) return;
+      const currentTime = (/* @__PURE__ */ new Date()).getTime();
+      const touchX = e.touches[0].clientX;
+      const touchY = e.touches[0].clientY;
+      if (currentTime - lastTouchTime < 300 && Math.abs(touchX - lastTouchX) < 20 && Math.abs(touchY - lastTouchY) < 20) {
+        handleDoubleTapZoom(e, container2);
+        e.preventDefault();
+        return;
+      }
+      lastTouchTime = currentTime;
+      lastTouchX = touchX;
+      lastTouchY = touchY;
       touchStartY = e.touches[0].clientY;
-    }, { passive: true });
+      touchStartX = e.touches[0].clientX;
+      touchDeltaY = 0;
+      touchDeltaX = 0;
+    }, { passive: false });
     swiperEl.addEventListener("touchmove", (e) => {
+      if (e.touches.length > 1) {
+        if (rafId) cancelAnimationFrame(rafId);
+        container2.style.transform = "";
+        container2.style.opacity = "";
+        return;
+      }
       if (e.target.closest(".image-deck-metadata-modal")) return;
-      touchDeltaY = e.touches[0].clientY - touchStartY;
-      if (touchDeltaY > 50) {
+      const currentY = e.touches[0].clientY;
+      const currentX = e.touches[0].clientX;
+      touchDeltaY = currentY - touchStartY;
+      touchDeltaX = Math.abs(currentX - touchStartX);
+      const isInFullscreen = !!document.fullscreenElement;
+      if (!isInFullscreen && touchDeltaY > 30 && touchDeltaX < 50) {
         if (rafId) cancelAnimationFrame(rafId);
         rafId = requestAnimationFrame(() => {
-          container.style.transform = `translateY(${touchDeltaY * 0.3}px)`;
-          container.style.opacity = Math.max(0.3, 1 - touchDeltaY / 500);
+          container2.style.transform = `translateY(${touchDeltaY * 0.3}px)`;
+          container2.style.opacity = Math.max(0.3, 1 - touchDeltaY / 500);
         });
       }
     }, { passive: true });
-    swiperEl.addEventListener("touchend", () => {
+    swiperEl.addEventListener("touchend", (e) => {
       if (rafId) cancelAnimationFrame(rafId);
-      if (touchDeltaY > 150) {
+      const isInFullscreen = !!document.fullscreenElement;
+      if (!isInFullscreen && touchDeltaY > 150 && touchDeltaX < 50) {
         closeDeck();
       } else {
         requestAnimationFrame(() => {
-          container.style.transform = "";
-          container.style.opacity = "";
+          container2.style.transform = "";
+          container2.style.opacity = "";
         });
       }
       touchDeltaY = 0;
+      touchDeltaX = 0;
     }, { passive: true });
   }
-  function setupMouseWheel(container) {
-    const swiperEl = container.querySelector(".image-deck-swiper");
+  function handleDoubleTapZoom(event, container2) {
+    const swiper = window.currentSwiperInstance;
+    if (!swiper || !swiper.zoom) return;
+    if (isCurrentSlideGallery()) {
+      console.log("[Image Deck] Double tap ignored - gallery slide");
+      return;
+    }
+    const rect = event.target.getBoundingClientRect();
+    const x = event.touches[0].clientX - rect.left;
+    const y = event.touches[0].clientY - rect.top;
+    if (swiper.zoom.scale === 1) {
+      swiper.zoom.in(swiper.zoom.enabled ? 2 : 1);
+      console.log("[Image Deck] Double tap zoom in");
+    } else {
+      swiper.zoom.out();
+      console.log("[Image Deck] Double tap zoom out");
+    }
+    event.preventDefault();
+  }
+  function setupMouseWheel(container2) {
+    const swiperEl = container2.querySelector(".image-deck-swiper");
     if (!swiperEl) return;
     swiperEl.addEventListener("wheel", (e) => {
       const swiper = window.currentSwiperInstance;
@@ -1216,7 +1415,7 @@
               const totalCurrentSlides = window.currentSwiperInstance.virtual ? window.currentSwiperInstance.virtual.slides.length : window.currentSwiperInstance.slides.length;
               const totalPagesLocal = totalPages || 1;
               if (currentIndex >= totalCurrentSlides - 3 && currentChunkPage < totalPagesLocal) {
-                loadNextChunk();
+                loadNextChunk(container);
               }
             }
           }, 100);
@@ -1261,6 +1460,34 @@
       console.log("[Image Deck] Plugin config loaded:", pluginConfig);
       injectDynamicStyles(pluginConfig);
       let detectedContext = detectContext();
+      const path = window.location.pathname;
+      if (path.match(/^\/performers\/\d+/) && !detectedContext) {
+        const performerMatch = path.match(/^\/performers\/(\d+)/);
+        if (performerMatch) {
+          const performerId = performerMatch[1];
+          const isImagesTab = path.includes("/images") || window.location.hash.includes("images") || document.querySelector(".nav-tabs .active")?.textContent?.includes("Images");
+          const isGalleriesTab = path.includes("/galleries") || window.location.hash.includes("galleries") || document.querySelector(".nav-tabs .active")?.textContent?.includes("Galleries");
+          const type = isGalleriesTab ? "galleries" : "images";
+          detectedContext = {
+            type,
+            id: performerId,
+            performerId,
+            isPerformerContext: true,
+            filter: {
+              performers: { value: [performerId], modifier: "INCLUDES" },
+              sortBy: "created_at",
+              sortDir: "desc"
+            }
+          };
+          const params = new URLSearchParams(window.location.search);
+          if (params.has("sortby")) {
+            detectedContext.filter.sortBy = params.get("sortby");
+          }
+          if (params.has("sortdir")) {
+            detectedContext.filter.sortDir = params.get("sortdir");
+          }
+        }
+      }
       if (window.location.pathname === "/galleries" && !detectedContext?.isGalleryListing) {
         detectedContext = {
           type: "galleries",
@@ -1273,7 +1500,8 @@
       contextInfo = detectedContext;
       console.log("[Image Deck] Context assigned:", contextInfo);
       let imageResult;
-      const isListContext = contextInfo && (contextInfo.isSingleGallery || contextInfo.isGalleryListing || contextInfo.type === "images" || contextInfo.isFilteredView || window.location.pathname.startsWith("/images"));
+      const isListContext = contextInfo && (contextInfo.isSingleGallery || contextInfo.isGalleryListing || contextInfo.type === "images" || contextInfo.isFilteredView || contextInfo.isPerformerContext || // Add performer context
+      window.location.pathname.startsWith("/images"));
       if (isListContext) {
         console.log("[Image Deck] Using context-based fetching for page 1");
         imageResult = await fetchContextImages(contextInfo, 1, chunkSize);
@@ -1293,27 +1521,45 @@
         currentChunkPage2 = imageResult.currentPage || 1;
       }
       console.log(`[Image Deck] Opening with ${currentImages.length} items (chunk 1 of ${totalPages2 || 1})`);
-      const container = createDeckUI();
+      const container2 = createDeckUI();
       document.body.classList.add("image-deck-open");
       requestAnimationFrame(() => {
-        container.classList.add("active");
+        container2.classList.add("active");
       });
       currentSwiper = initSwiper(
-        container,
+        container2,
         currentImages,
         pluginConfig,
         () => {
-          updateUI(container);
+          updateUI(container2);
           checkAndLoadNextChunk();
         },
         savePosition,
         contextInfo
       );
       window.currentSwiperInstance = currentSwiper;
+      window.currentImages = currentImages;
+      setCurrentSwiper(currentSwiper);
+      if (currentSwiper) {
+        currentSwiper.on("zoomChange", (swiper, scale) => {
+          const topBar = container2.querySelector(".image-deck-topbar");
+          const controls = container2.querySelector(".image-deck-controls");
+          const speedIndicator = container2.querySelector(".image-deck-speed");
+          if (scale > 1) {
+            if (topBar) topBar.style.opacity = "0";
+            if (controls) controls.style.opacity = "0";
+            if (speedIndicator) speedIndicator.style.opacity = "0";
+          } else {
+            if (topBar) topBar.style.opacity = "1";
+            if (controls) controls.style.opacity = "1";
+            if (speedIndicator) speedIndicator.style.opacity = "1";
+          }
+        });
+      }
       restorePosition();
-      updateUI(container);
+      updateUI(container2);
       Promise.resolve().then(() => (init_controls(), controls_exports)).then((module) => {
-        module.setupEventHandlers(container);
+        module.setupEventHandlers(container2);
       });
     } catch (error) {
       console.error("[Image Deck] Error opening deck:", error);
@@ -1323,9 +1569,9 @@
   function createDeckUI() {
     const existing = document.querySelector(".image-deck-container");
     if (existing) existing.remove();
-    const container = document.createElement("div");
-    container.className = `image-deck-container${isMobile ? " mobile-optimized" : ""}`;
-    container.innerHTML = `
+    const container2 = document.createElement("div");
+    container2.className = `image-deck-container${isMobile ? " mobile-optimized" : ""}`;
+    container2.innerHTML = `
         <div class="image-deck-ambient"></div>
         <div class="image-deck-topbar">
             <div class="image-deck-counter"></div>
@@ -1339,14 +1585,18 @@
         <div class="image-deck-swiper swiper">
             <div class="swiper-wrapper"></div>
         </div>
-        <div class="image-deck-controls">
-            <button class="image-deck-control-btn" data-action="prev">\u25C0</button>
-            <button class="image-deck-control-btn" data-action="play">\u25B6</button>
-            <button class="image-deck-control-btn" data-action="next">\u25B6</button>
-            <button class="image-deck-control-btn image-deck-info-btn" data-action="info" title="Image Info (I)">\u2139</button>
-            <button class="image-deck-control-btn" data-action="zoom-in" title="Zoom In (+)">+</button>
-            <button class="image-deck-control-btn" data-action="zoom-out" title="Zoom Out (-)">-</button>
-            <button class="image-deck-control-btn" data-action="next-chunk" title="Load Next Chunk">\u23ED\uFE0F</button>
+        <div class="image-deck-controls-wrapper">
+            <div class="image-deck-zoom-controls">
+                <button class="image-deck-control-btn" data-action="zoom-in" title="Zoom In (+)">\u2795</button>
+                <button class="image-deck-control-btn" data-action="zoom-out" title="Zoom Out (-)">\u2796</button>
+            </div>
+            <div class="image-deck-navigation-controls">
+                <button class="image-deck-control-btn" data-action="prev">\u25C0</button>
+                <button class="image-deck-control-btn" data-action="play">\u25B6</button>
+                <button class="image-deck-control-btn" data-action="next">\u25B6</button>
+                <button class="image-deck-control-btn image-deck-info-btn" data-action="info" title="Image Info (I)">\u2139</button>
+                <button class="image-deck-control-btn" data-action="next-chunk" title="Load Next Chunk">\u23ED\uFE0F</button>
+            </div>
         </div>
         <div class="image-deck-speed">Speed: ${pluginConfig.autoPlayInterval}ms</div>
         <div class="image-deck-metadata-modal">
@@ -1359,10 +1609,10 @@
             </div>
         </div>
     `;
-    document.body.appendChild(container);
-    return container;
+    document.body.appendChild(container2);
+    return container2;
   }
-  function updateUI(container) {
+  function updateUI(container2) {
     if (!currentSwiper || uiUpdatePending) return;
     uiUpdatePending = true;
     requestAnimationFrame(() => {
@@ -1386,14 +1636,14 @@
         }
       }
       if (pluginConfig.showCounter) {
-        const counter = container.querySelector(".image-deck-counter");
+        const counter = container2.querySelector(".image-deck-counter");
         const chunkInfo = totalPages2 > 1 ? ` (chunk ${currentChunkPage2}/${totalPages2})` : "";
         if (counter) {
           counter.textContent = `${current} of ${actualTotal}${chunkInfo}`;
         }
       }
       if (pluginConfig.showProgressBar) {
-        const progress = container.querySelector(".image-deck-progress");
+        const progress = container2.querySelector(".image-deck-progress");
         if (progress) {
           const progressValue = actualTotal > 0 ? current / actualTotal : 0;
           progress.style.transform = `scaleX(${progressValue})`;
@@ -1461,7 +1711,7 @@
       }
     }
   }
-  async function loadNextChunk() {
+  async function loadNextChunk(container2 = null) {
     if (isChunkLoading) {
       console.log("[Image Deck] Load already in progress, skipping...");
       return;
@@ -1483,6 +1733,7 @@
     if (nextChunkButton) {
       nextChunkButton.disabled = true;
       nextChunkButton.style.opacity = "0.5";
+      nextChunkButton.innerHTML = "\u{1F504}";
     }
     if (loadingIndicator) {
       loadingIndicator.style.display = "block";
@@ -1508,6 +1759,7 @@
           const fullSrc = img.paths.image;
           const isGallery = img.url && !contextInfo?.isSingleGallery;
           const title = img.title || "Untitled";
+          const loading = "lazy";
           if (isGallery) {
             const imageCountDisplay = img.image_count !== void 0 ? `${GALLERY_ICON_SVG2}: ${img.image_count}` : "";
             let performerDisplay = "";
@@ -1516,22 +1768,22 @@
               performerDisplay = `<div class="gallery-performers" style="margin-top: 5px; font-size: 18px; color: #ccc;">${performerNames}</div>`;
             }
             return `
-				<div class="swiper-zoom-container" data-type="gallery" data-url="${img.url}">
-					<div class="gallery-cover-container">
-						<div class="gallery-cover-title" title="${title}">${title}</div>
-						${imageCountDisplay ? `<div class="gallery-image-count" style="font-size: 18px; color: #ccc; margin-top: 3px;">${imageCountDisplay}</div>` : ""}
-						<a href="${img.url}" target="_blank" class="gallery-cover-link">
-							<img src="${fullSrc}" alt="${title}" decoding="async" loading="lazy" />
-						</a>
-						${performerDisplay}
-					</div>
-				</div>`;
-          } else {
-            return `
-								<div class="swiper-zoom-container" data-type="image">
-									<img src="${fullSrc}" alt="${title}" decoding="async" loading="lazy" style="max-width: 100%; height: auto; display: block; margin: 0 auto;" />
-								</div>`;
+            <div class="swiper-zoom-container" data-type="gallery" data-url="${img.url}">
+                <div class="gallery-cover-container">
+                    <div class="gallery-cover-title" title="${title}">${title}</div>
+                    ${imageCountDisplay ? `<div class="gallery-image-count" style="font-size: 18px; color: #ccc; margin-top: 3px;">${imageCountDisplay}</div>` : ""}
+                    <a href="${img.url}" target="_blank" class="gallery-cover-link">
+                        <img src="${fullSrc}" alt="${title}" decoding="async" loading="${loading}" />
+                    </a>
+                    ${performerDisplay}
+                </div>
+            </div>`;
           }
+          return `
+			<div class="swiper-zoom-container" data-type="image">
+				<img src="${fullSrc}" alt="${title}" decoding="async" loading="${loading}" 
+					 style="max-width: 100%; height: auto; display: block; margin: 0 auto;" />
+			</div>`;
         });
         currentSwiper.virtual.slides = allSlides;
         currentSwiper.virtual.update(true);
@@ -1547,8 +1799,8 @@
           });
         }
       }
-      const container = document.querySelector(".image-deck-container");
-      if (container && typeof updateUI === "function") updateUI(container);
+      const container3 = document.querySelector(".image-deck-container");
+      if (container3 && typeof updateUI === "function") updateUI(container3);
       if (loadingIndicator) {
         loadingIndicator.textContent = `\u2713 Loaded ${result.images.length} new items`;
         setTimeout(() => {
@@ -1568,16 +1820,17 @@
       if (nextChunkButton) {
         nextChunkButton.disabled = false;
         nextChunkButton.style.opacity = "1";
+        nextChunkButton.innerHTML = "\u23ED\uFE0F";
       }
     }
   }
   function closeDeck() {
     stopAutoPlay();
-    const container = document.querySelector(".image-deck-container");
-    if (container) {
-      container.classList.remove("active");
+    const container2 = document.querySelector(".image-deck-container");
+    if (container2) {
+      container2.classList.remove("active");
       setTimeout(() => {
-        container.remove();
+        container2.remove();
         document.body.classList.remove("image-deck-open");
       }, 300);
     }
@@ -1594,6 +1847,7 @@
     "deck.js"() {
       init_config();
       init_context();
+      init_metadata();
       init_swiper();
       init_utils();
       GALLERY_ICON_SVG2 = '<svg fill="white" width="16" height="16" viewBox="0 0 36 36" style="vertical-align: middle;" xmlns="http://www.w3.org/2000/svg"><path d="M32,4H4A2,2,0,0,0,2,6V30a2,2,0,0,0,2,2H32a2,2,0,0,0,2-2V6A2,2,0,0,0,32,4ZM4,30V6H32V30Z"></path><path d="M8.92,14a3,3,0,1,0-3-3A3,3,0,0,0,8.92,14Zm0-4.6A1.6,1.6,0,1,1,7.33,11,1.6,1.6,0,0,1,8.92,9.41Z"></path><path d="M22.78,15.37l-5.4,5.4-4-4a1,1,0,0,0-1.41,0L5.92,22.9v2.83l6.79-6.79L16,22.18l-3.75,3.75H15l8.45-8.45L30,24V21.18l-5.81-5.81A1,1,0,0,0,22.78,15.37Z"></path></svg>';
@@ -1619,7 +1873,7 @@
   var retryTimer = null;
   var observer = new MutationObserver(() => {
     const path = window.location.pathname;
-    if (path.startsWith("/galleries") || path.startsWith("/images")) {
+    if (path.startsWith("/galleries") || path.startsWith("/images") || path.match(/^\/performers\/\d+/)) {
       if (!document.getElementById("image-deck-nav-btn")) {
         retryCreateButton();
       }
@@ -1632,7 +1886,7 @@
     const buttonId = "image-deck-nav-btn";
     const existing = document.getElementById(buttonId);
     const path = window.location.pathname;
-    const isAllowedPath = path.startsWith("/galleries") || path.startsWith("/images");
+    const isAllowedPath = path.startsWith("/galleries") || path.startsWith("/images") || path.match(/^\/performers\/\d+/);
     if (!isAllowedPath) {
       cleanupButton();
       return;
@@ -1640,13 +1894,14 @@
     const context = detectContext();
     const hasImages = document.querySelectorAll('img[src*="/image/"]').length > 0;
     const hasGalleryCovers = document.querySelectorAll(".gallery-cover img, .gallery-card img").length > 0;
-    if (!context && !hasImages && !hasGalleryCovers) {
+    const isPerformerPage = path.match(/^\/performers\/\d+/);
+    if (!context && !hasImages && !hasGalleryCovers && !isPerformerPage) {
       return;
     }
     if (existing) return;
     const buttonContainer = document.createElement("div");
     buttonContainer.className = "col-4 col-sm-3 col-md-2 col-lg-auto nav-link";
-    const svgPath = "M1075.82857,431.195122 L1092.28571,431.195122 C1093.24511,431.195122 1094.03194,431.944117 1094.10822,432.896752 L1094.11429,433.04878 L1094.11429,457.146341 C1094.11429,458.118901 1093.37543,458.916524 1092.43569,458.993855 L1092.28571,459 L1075.82857,459 C1074.86917,459 1074.08235,458.251005 1074.00606,457.29837 L1074,457.146341 L1074,433.04878 C1074,432.076221 1074.73886,431.278598 1075.6786,431.201267 L1075.82857,431.195122 L1092.28571,431.195122 Z M1091.37143,455.292683 L1089.54286,455.292683 C1089.03791,455.292683 1088.62857,455.707639 1088.62857,456.219512 C1088.62857,456.694823 1088.98152,457.086568 1089.43623,457.140106 L1089.54286,457.146341 L1091.37143,457.146341 C1091.87637,457.146341 1092.28571,456.731386 1092.28571,456.219512 C1092.28571,455.292683 1091.37143,455.292683 1091.37143,455.292683 Z M1102.34286,421 C1104.36264,421 1106,422.659822 1106,424.707317 L1106,448.804878 C1106,450.852373 1104.36264,452.512195 1102.34286,452.512195 L1095.94246,452.512 L1095.94286,433.04878 C1095.94286,431.067334 1094.40943,429.448952 1092.47994,429.346602 L1092.28571,429.341463 L1082.22846,429.341 L1082.22857,424.707317 C1082.22857,422.659822 1083.86593,421 1085.88571,421 L1102.34286,421 Z M1086.05344,440.463415 C1085.45815,440.463415 1084.88108,440.640782 1084.39083,440.966741 L1084.21119,441.095885 L1084.05714,441.223746 C1083.50627,440.735085 1082.79712,440.463415 1082.06038,440.463415 C1081.25617,440.463415 1080.48485,440.787117 1079.91637,441.363404 C1079.34789,441.93969 1079.02857,442.721596 1079.02857,443.536846 C1079.02857,444.279753 1079.29389,444.995021 1079.77147,445.552286 L1079.90694,445.700252 L1083.39256,449.441469 C1083.56488,449.626659 1083.80567,449.731707 1084.05714,449.731707 C1084.2667,449.731707 1084.46884,449.658757 1084.63024,449.527144 L1084.72193,449.441251 L1088.21456,445.6922 C1088.76981,445.125089 1089.08571,444.347508 1089.08571,443.536846 C1089.08571,442.721814 1088.76608,441.939843 1088.19745,441.363404 C1087.62885,440.787001 1086.85796,440.463415 1086.05344,440.463415 Z M1086.05344,442.316702 C1086.37267,442.316702 1086.679,442.445343 1086.90481,442.674253 C1087.13028,442.903164 1087.25705,443.213421 1087.25705,443.536846 C1087.25705,443.767864 1087.19237,443.992164 1087.07315,444.184989 L1086.99516,444.296709 L1086.8954,444.40898 L1084.05713,447.455146 L1081.21766,444.407946 L1081.12406,444.301978 C1080.95023,444.081822 1080.85724,443.814417 1080.85724,443.536846 C1080.85724,443.213014 1080.98381,442.903018 1081.20948,442.674253 C1081.43539,442.445239 1081.74129,442.316702 1082.06038,442.316702 C1082.334,442.316702 1082.59804,442.411199 1082.80974,442.582208 L1082.91104,442.674006 L1083.41059,443.180418 L1083.49666,443.25747 C1083.82251,443.514309 1084.28051,443.516457 1084.6089,443.264169 L1084.70327,443.18085 L1085.20269,442.674099 L1085.30413,442.582283 C1085.51609,442.411237 1085.78017,442.316702 1086.05344,442.316702 Z M1079.94286,443.536846 L1079.94959,443.70688 L1079.94637,443.660494 L1079.94286,443.536846 Z M1080.68629,441.903404 L1080.58,442.001122 L1080.6236,441.959789 C1080.64417,441.940554 1080.66507,441.921752 1080.68629,441.903404 Z M1085.615,441.437122 L1085.39825,441.495321 L1085.56598,441.447588 L1085.615,441.437122 Z M1085.73754,441.413919 L1085.615,441.437122 L1085.63841,441.431846 L1085.73754,441.413919 Z M1078.57143,433.04878 L1076.74286,433.04878 C1076.23791,433.04878 1075.82857,433.463736 1075.82857,433.97561 C1075.82857,434.450921 1076.18152,434.842665 1076.63623,434.896204 L1076.74286,434.902439 L1078.57143,434.902439 C1079.07637,434.902439 1079.48571,434.487483 1079.48571,433.97561 C1079.48571,433.463736 1079.07637,433.04878 1078.57143,433.04878 Z";
+    const svgPath = "M1075.82857,431.195122 L1092.28571,431.195122 C1093.24511,431.195122 1094.03194,431.944117 1094.10822,432.896752 L1094.11429,433.04878 L1094.11429,457.146341 C1094.11429,458.118901 1093.37543,458.916524 1092.43569,458.993855 L1092.28571,459 L1075.82857,459 C1074.86917,459 1074.08235,458.251005 1074.00606,457.29837 L1074,457.146341 L1074,433.04878 C1074,432.076221 1074.73886,431.278598 1075.6786,431.201267 L1075.82857,431.195122 L1092.28571,431.195122 Z M1091.37143,455.292683 L1089.54286,455.292683 C1089.03791,455.292683 1088.62857,455.707639 1088.62857,456.219512 C1088.62857,456.694823 1088.98152,457.086568 1089.43623,457.140106 L1089.54286,457.146341 L1091.37143,457.146341 C1091.87637,457.146341 1092.28571,456.731386 1092.28571,456.219512 C1092.28571,455.292683 1091.37143,455.292683 1091.37143,455.292683 Z M1102.34286,421 C1104.36264,421 1106,422.659822 1106,424.707317 L1106,448.804878 C1106,450.852373 1104.36264,452.512195 1102.34286,452.512195 L1095.94246,452.512 L1095.94286,433.04878 C1095.94286,431.067334 1094.40943,429.448952 1092.47994,429.346602 L1092.28571,429.341463 L1082.22846,429.341 L1082.22857,424.707317 C1082.22857,422.659822 1083.86593,421 1085.88571,421 L1102.34286,421 Z M1086.05344,440.463415 C1085.45815,440.463415 1084.88108,440.640782 1084.39083,440.966741 L1084.21119,441.095885 L1084.05714,441.223746 C1083.50627,440.735085 1082.79712,440.463415 1082.06038,440.463415 C1081.25617,440.463415 1080.48485,440.787117 1079.91637,441.363404 C1079.34789,441.93969 1079.02857,442.721596 1079.02857,443.536846 C1079.02857,444.279753 1079.29389,444.995021 1079.77147,445.552286 L1079.90694,445.700252 L1083.39256,449.441469 C1083.56488,449.626659 1083.80567,449.731707 1084.05714,449.731707 C1084.2667,449.731707 1084.46884,449.658757 1084.63024,449.527144 L1084.72193,449.441251 L1088.21456,445.6922 C1088.76981,445.125089 1089.08571,444.347508 1089.08571,443.536846 C1089.08571,442.721814 1088.76608,441.939843 1088.19745,441.363404 C1087.62885,440.787001 1086.85796,440.463415 1086.05344,440.463415 Z M1086.05344,442.316702 C1086.37267,442.316702 1086.679,442.445343 1086.90481,442.674253 C1087.13028,442.903164 1087.25705,443.213421 1087.25705,443.536846 C1087.25705,443.767864 1087.19237,443.992164 1087.07315,444.184989 L1086.99516,444.296709 L1086.8954,444.40898 L1084.05713,447.455146 L1081.21766,444.407946 L1081.12406,444.301978 C1080.95023,444.081822 1080.85724,443.814417 1080.85724,443.536846 C1080.85724,443.213014 1080.98381,442.903018 1081.20948,442.674253 C1081.43539,442.445239 1081.74129,442.316702 1082.06038,442.316702 C1082.334,442.316702 1082.59804,442.411199 1082.80974,442.582208 L1082.91104,442.674006 L1083.41059,443.180418 L1083.49666,443.25747 C1083.82251,443.514309 1084.28051,443.516457 1084.6089,443.264169 L1084.70327,443.18085 L1085.20269,442.674099 L1085.30413,442.582283 C1085.51609,442.411237 1085.78017,442.316702 1086.05344,442.316702 Z M1079.94286,443.536846 L1079.94959,443.70688 L1079.94637,443.660494 L1079.94286,443.536846 Z M1080.68629,441.903404 L1080.58,442.001122 L1080.6236,441.959789 C1080.64417,441.940554 1080.66507,441.921752 1080.68629,441.903404 Z M1085.615,441.437122 L1085.39825,441.495321 L1085.56598,441.447588 L1085.615,441.437122 Z M1085.73754,441.413919 L1085.615,441.437122 L1085.63841,441.431846 L1085.73754,441.413919 Z M1078.57143,433.04878 L1076.74286,433.04878 C1076.23791,433.04878 1075.82857,433.463736 1075.82857,433.97561 C1075.82857,44.450921 1076.18152,434.842665 1076.63623,434.896204 L1076.74286,434.902439 L1078.57143,434.902439 C1079.07637,434.902439 1079.48571,434.487483 1079.48571,433.97561 C1079.48571,433.463736 1079.07637,433.04878 1078.57143,433.04878 Z";
     buttonContainer.innerHTML = `
         <a href="javascript:void(0);" id="${buttonId}" class="minimal p-4 p-xl-2 d-flex d-xl-inline-block flex-column justify-content-between align-items-center btn btn-primary" title="Open Image Deck">
             <svg 
@@ -1678,12 +1933,12 @@
   }
   function retryCreateButton(attempts = 0, maxAttempts = 5) {
     const path = window.location.pathname;
-    const isAllowed = path.startsWith("/galleries") || path.startsWith("/images");
+    const isAllowed = path.startsWith("/galleries") || path.startsWith("/images") || path.match(/^\/performers\/\d+/);
     if (!isAllowed) {
       cleanupButton();
       return;
     }
-    const hasContext = detectContext() || document.querySelectorAll('img[src*="/image/"]').length > 0 || document.querySelectorAll(".gallery-cover img, .gallery-card img").length > 0;
+    const hasContext = detectContext() || document.querySelectorAll('img[src*="/image/"]').length > 0 || document.querySelectorAll(".gallery-cover img, .gallery-card img").length > 0 || path.match(/^\/performers\/\d+/);
     if (hasContext) {
       createLaunchButton();
     } else if (attempts < maxAttempts - 1) {
