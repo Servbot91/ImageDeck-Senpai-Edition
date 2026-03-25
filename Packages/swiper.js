@@ -75,11 +75,26 @@ export function initSwiper(container, images, pluginConfig, updateUICallback, sa
             containerClass: 'swiper-zoom-container',
             zoomedSlideClass: 'swiper-slide-zoomed'
         },
+        // Add double tap settings
+        doubleTapZoom: true,
+        doubleTapZoomRatio: 2,
         
         // Center Fixes
         centeredSlidesBounds: true,
         centerInsufficientSlides: true,
         
+        // Touch settings for better mobile experience
+        touchRatio: 1,
+        touchAngle: 45,
+        simulateTouch: true,
+        shortSwipes: true,
+        longSwipes: true,
+        longSwipesRatio: 0.5,
+        longSwipesMs: 300,
+        
+        // Prevent interference with pinch zoom
+        passiveListeners: false,       
+                
         // Loop + Virtual Stability
         loop: isLooped,
         loopedSlides: 2,
@@ -115,6 +130,37 @@ export function initSwiper(container, images, pluginConfig, updateUICallback, sa
                         nextBtn.click();
                     }
                 }
+            },
+            // Double tap handler
+            doubleTap: function(swiper, event) {
+                console.log('[Image Deck] Double tap detected, scale:', swiper.zoom.scale);
+                if (swiper.zoom) {
+                    // Check if current slide is not a gallery
+                    const activeSlide = swiper.slides[swiper.activeIndex];
+                    if (activeSlide) {
+                        const zoomContainer = activeSlide.querySelector('.swiper-zoom-container');
+                        if (zoomContainer && zoomContainer.dataset.type !== 'gallery') {
+                            // Toggle zoom on double tap
+                            if (swiper.zoom.scale <= 1) {
+                                swiper.zoom.in(swiper.params.doubleTapZoomRatio || 2);
+                                console.log('[Image Deck] Zooming in to ratio:', swiper.params.doubleTapZoomRatio || 2);
+                            } else {
+                                swiper.zoom.out();
+                                console.log('[Image Deck] Zooming out');
+                            }
+                        }
+                    }
+                }
+            },
+            // Touch start handler
+            touchStart: function(swiper, event) {
+                // Reset any swipe-to-close state when starting a new touch
+                console.log('[Image Deck] Touch start');
+            },
+            // Touch end handler  
+            touchEnd: function(swiper, event) {
+                // Clean up any touch states
+                console.log('[Image Deck] Touch end');
             }
         }
     };

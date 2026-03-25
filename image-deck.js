@@ -863,9 +863,22 @@
         containerClass: "swiper-zoom-container",
         zoomedSlideClass: "swiper-slide-zoomed"
       },
+      // Add double tap settings
+      doubleTapZoom: true,
+      doubleTapZoomRatio: 2,
       // Center Fixes
       centeredSlidesBounds: true,
       centerInsufficientSlides: true,
+      // Touch settings for better mobile experience
+      touchRatio: 1,
+      touchAngle: 45,
+      simulateTouch: true,
+      shortSwipes: true,
+      longSwipes: true,
+      longSwipesRatio: 0.5,
+      longSwipesMs: 300,
+      // Prevent interference with pinch zoom
+      passiveListeners: false,
       // Loop + Virtual Stability
       loop: isLooped,
       loopedSlides: 2,
@@ -900,6 +913,33 @@
               nextBtn.click();
             }
           }
+        },
+        // Double tap handler
+        doubleTap: function(swiper2, event) {
+          console.log("[Image Deck] Double tap detected, scale:", swiper2.zoom.scale);
+          if (swiper2.zoom) {
+            const activeSlide = swiper2.slides[swiper2.activeIndex];
+            if (activeSlide) {
+              const zoomContainer = activeSlide.querySelector(".swiper-zoom-container");
+              if (zoomContainer && zoomContainer.dataset.type !== "gallery") {
+                if (swiper2.zoom.scale <= 1) {
+                  swiper2.zoom.in(swiper2.params.doubleTapZoomRatio || 2);
+                  console.log("[Image Deck] Zooming in to ratio:", swiper2.params.doubleTapZoomRatio || 2);
+                } else {
+                  swiper2.zoom.out();
+                  console.log("[Image Deck] Zooming out");
+                }
+              }
+            }
+          }
+        },
+        // Touch start handler
+        touchStart: function(swiper2, event) {
+          console.log("[Image Deck] Touch start");
+        },
+        // Touch end handler  
+        touchEnd: function(swiper2, event) {
+          console.log("[Image Deck] Touch end");
         }
       }
     };
@@ -966,9 +1006,27 @@
     if (!document.fullscreenElement) {
       container2.requestFullscreen().catch((err) => {
         console.warn("[Image Deck] Fullscreen request failed:", err);
+      }).finally(() => {
+        updateFullscreenUI(true);
       });
     } else {
-      document.exitFullscreen();
+      document.exitFullscreen().finally(() => {
+        updateFullscreenUI(false);
+      });
+    }
+  }
+  function updateFullscreenUI(isFullscreen) {
+    const fullscreenBtn = document.querySelector(".image-deck-fullscreen");
+    if (fullscreenBtn) {
+      fullscreenBtn.textContent = isFullscreen ? "\u26F6" : "\u26F6";
+    }
+    const container2 = document.querySelector(".image-deck-container");
+    if (container2) {
+      if (isFullscreen) {
+        container2.classList.add("fullscreen-mode");
+      } else {
+        container2.classList.remove("fullscreen-mode");
+      }
     }
   }
   function isCurrentSlideGallery() {
@@ -1081,18 +1139,48 @@
   }
   function setupSwipeGestures(container2) {
     let touchStartY = 0;
+    let touchStartX = 0;
     let touchDeltaY = 0;
+    let touchDeltaX = 0;
     let rafId = null;
+    let lastTouchTime = 0;
+    let lastTouchX = 0;
+    let lastTouchY = 0;
     const swiperEl = container2.querySelector(".image-deck-swiper");
     if (!swiperEl) return;
     swiperEl.addEventListener("touchstart", (e) => {
+      if (e.touches.length > 1) return;
       if (e.target.closest(".image-deck-metadata-modal")) return;
+      const currentTime = (/* @__PURE__ */ new Date()).getTime();
+      const touchX = e.touches[0].clientX;
+      const touchY = e.touches[0].clientY;
+      if (currentTime - lastTouchTime < 300 && Math.abs(touchX - lastTouchX) < 20 && Math.abs(touchY - lastTouchY) < 20) {
+        handleDoubleTapZoom(e, container2);
+        e.preventDefault();
+        return;
+      }
+      lastTouchTime = currentTime;
+      lastTouchX = touchX;
+      lastTouchY = touchY;
       touchStartY = e.touches[0].clientY;
-    }, { passive: true });
+      touchStartX = e.touches[0].clientX;
+      touchDeltaY = 0;
+      touchDeltaX = 0;
+    }, { passive: false });
     swiperEl.addEventListener("touchmove", (e) => {
+      if (e.touches.length > 1) {
+        if (rafId) cancelAnimationFrame(rafId);
+        container2.style.transform = "";
+        container2.style.opacity = "";
+        return;
+      }
       if (e.target.closest(".image-deck-metadata-modal")) return;
-      touchDeltaY = e.touches[0].clientY - touchStartY;
-      if (touchDeltaY > 50) {
+      const currentY = e.touches[0].clientY;
+      const currentX = e.touches[0].clientX;
+      touchDeltaY = currentY - touchStartY;
+      touchDeltaX = Math.abs(currentX - touchStartX);
+      const isInFullscreen = !!document.fullscreenElement;
+      if (!isInFullscreen && touchDeltaY > 30 && touchDeltaX < 50) {
         if (rafId) cancelAnimationFrame(rafId);
         rafId = requestAnimationFrame(() => {
           container2.style.transform = `translateY(${touchDeltaY * 0.3}px)`;
@@ -1100,9 +1188,10 @@
         });
       }
     }, { passive: true });
-    swiperEl.addEventListener("touchend", () => {
+    swiperEl.addEventListener("touchend", (e) => {
       if (rafId) cancelAnimationFrame(rafId);
-      if (touchDeltaY > 150) {
+      const isInFullscreen = !!document.fullscreenElement;
+      if (!isInFullscreen && touchDeltaY > 150 && touchDeltaX < 50) {
         closeDeck();
       } else {
         requestAnimationFrame(() => {
@@ -1111,7 +1200,27 @@
         });
       }
       touchDeltaY = 0;
+      touchDeltaX = 0;
     }, { passive: true });
+  }
+  function handleDoubleTapZoom(event, container2) {
+    const swiper = window.currentSwiperInstance;
+    if (!swiper || !swiper.zoom) return;
+    if (isCurrentSlideGallery()) {
+      console.log("[Image Deck] Double tap ignored - gallery slide");
+      return;
+    }
+    const rect = event.target.getBoundingClientRect();
+    const x = event.touches[0].clientX - rect.left;
+    const y = event.touches[0].clientY - rect.top;
+    if (swiper.zoom.scale === 1) {
+      swiper.zoom.in(swiper.zoom.enabled ? 2 : 1);
+      console.log("[Image Deck] Double tap zoom in");
+    } else {
+      swiper.zoom.out();
+      console.log("[Image Deck] Double tap zoom out");
+    }
+    event.preventDefault();
   }
   function setupMouseWheel(container2) {
     const swiperEl = container2.querySelector(".image-deck-swiper");
@@ -1514,6 +1623,7 @@
           const fullSrc = img.paths.image;
           const isGallery = img.url && !contextInfo?.isSingleGallery;
           const title = img.title || "Untitled";
+          const loading = "lazy";
           if (isGallery) {
             const imageCountDisplay = img.image_count !== void 0 ? `${GALLERY_ICON_SVG2}: ${img.image_count}` : "";
             let performerDisplay = "";
@@ -1522,22 +1632,22 @@
               performerDisplay = `<div class="gallery-performers" style="margin-top: 5px; font-size: 18px; color: #ccc;">${performerNames}</div>`;
             }
             return `
-				<div class="swiper-zoom-container" data-type="gallery" data-url="${img.url}">
-					<div class="gallery-cover-container">
-						<div class="gallery-cover-title" title="${title}">${title}</div>
-						${imageCountDisplay ? `<div class="gallery-image-count" style="font-size: 18px; color: #ccc; margin-top: 3px;">${imageCountDisplay}</div>` : ""}
-						<a href="${img.url}" target="_blank" class="gallery-cover-link">
-							<img src="${fullSrc}" alt="${title}" decoding="async" loading="lazy" />
-						</a>
-						${performerDisplay}
-					</div>
-				</div>`;
-          } else {
-            return `
-								<div class="swiper-zoom-container" data-type="image">
-									<img src="${fullSrc}" alt="${title}" decoding="async" loading="lazy" style="max-width: 100%; height: auto; display: block; margin: 0 auto;" />
-								</div>`;
+            <div class="swiper-zoom-container" data-type="gallery" data-url="${img.url}">
+                <div class="gallery-cover-container">
+                    <div class="gallery-cover-title" title="${title}">${title}</div>
+                    ${imageCountDisplay ? `<div class="gallery-image-count" style="font-size: 18px; color: #ccc; margin-top: 3px;">${imageCountDisplay}</div>` : ""}
+                    <a href="${img.url}" target="_blank" class="gallery-cover-link">
+                        <img src="${fullSrc}" alt="${title}" decoding="async" loading="${loading}" />
+                    </a>
+                    ${performerDisplay}
+                </div>
+            </div>`;
           }
+          return `
+			<div class="swiper-zoom-container" data-type="image">
+				<img src="${fullSrc}" alt="${title}" decoding="async" loading="${loading}" 
+					 style="max-width: 100%; height: auto; display: block; margin: 0 auto;" />
+			</div>`;
         });
         currentSwiper.virtual.slides = allSlides;
         currentSwiper.virtual.update(true);

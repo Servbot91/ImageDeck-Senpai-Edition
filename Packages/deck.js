@@ -373,41 +373,43 @@ export async function loadNextChunk(container = null) {
         // 4. Update UI (Swiper OR Gallery)
         if (currentSwiper && currentSwiper.virtual) {
             // Re-generate ALL slides to ensure formatting consistency across the whole deck
-		const allSlides = currentImages.map(img => {
-			const fullSrc = img.paths.image;
-			const isGallery = img.url && !contextInfo?.isSingleGallery;
-			const title = img.title || 'Untitled';
-			
-			if (isGallery) {
-				// Create image count display with SVG icon
-				const imageCountDisplay = img.image_count !== undefined ? 
-					`${GALLERY_ICON_SVG}: ${img.image_count}` : '';
-				
-				// Create performer display
-				let performerDisplay = '';
-				if (img.performers && img.performers.length > 0) {
-			const performerNames = img.performers.map(p => p.name).join(', ');
-			performerDisplay = `<div class="gallery-performers" style="margin-top: 5px; font-size: 18px; color: #ccc;">${performerNames}</div>`;
-			}
+const allSlides = currentImages.map(img => {
+    const fullSrc = img.paths.image;
+    const isGallery = img.url && !contextInfo?.isSingleGallery;
+    const title = img.title || 'Untitled';
+    const loading = 'lazy'; // Consistent with getSlideTemplate
 
-			return `
-				<div class="swiper-zoom-container" data-type="gallery" data-url="${img.url}">
-					<div class="gallery-cover-container">
-						<div class="gallery-cover-title" title="${title}">${title}</div>
-						${imageCountDisplay ? `<div class="gallery-image-count" style="font-size: 18px; color: #ccc; margin-top: 3px;">${imageCountDisplay}</div>` : ''}
-						<a href="${img.url}" target="_blank" class="gallery-cover-link">
-							<img src="${fullSrc}" alt="${title}" decoding="async" loading="lazy" />
-						</a>
-						${performerDisplay}
-					</div>
-				</div>`;
-						} else {
-							return `
-								<div class="swiper-zoom-container" data-type="image">
-									<img src="${fullSrc}" alt="${title}" decoding="async" loading="lazy" style="max-width: 100%; height: auto; display: block; margin: 0 auto;" />
-								</div>`;
-						}
-					});
+    if (isGallery) {
+        // Use the same template structure as getSlideTemplate
+        const imageCountDisplay = img.image_count !== undefined ? 
+            `${GALLERY_ICON_SVG}: ${img.image_count}` : '';
+        
+        let performerDisplay = '';
+        if (img.performers && img.performers.length > 0) {
+            const performerNames = img.performers.map(p => p.name).join(', ');
+            performerDisplay = `<div class="gallery-performers" style="margin-top: 5px; font-size: 18px; color: #ccc;">${performerNames}</div>`;
+        }
+        
+        return `
+            <div class="swiper-zoom-container" data-type="gallery" data-url="${img.url}">
+                <div class="gallery-cover-container">
+                    <div class="gallery-cover-title" title="${title}">${title}</div>
+                    ${imageCountDisplay ? `<div class="gallery-image-count" style="font-size: 18px; color: #ccc; margin-top: 3px;">${imageCountDisplay}</div>` : ''}
+                    <a href="${img.url}" target="_blank" class="gallery-cover-link">
+                        <img src="${fullSrc}" alt="${title}" decoding="async" loading="${loading}" />
+                    </a>
+                    ${performerDisplay}
+                </div>
+            </div>`;
+    }
+
+		// For regular images, use the same structure as getSlideTemplate
+		return `
+			<div class="swiper-zoom-container" data-type="image">
+				<img src="${fullSrc}" alt="${title}" decoding="async" loading="${loading}" 
+					 style="max-width: 100%; height: auto; display: block; margin: 0 auto;" />
+			</div>`;
+	});
 
             // Update Swiper Virtual Slides
             currentSwiper.virtual.slides = allSlides;
