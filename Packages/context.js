@@ -154,32 +154,34 @@ function parseUrlFilters(search) {
 // Get visible images from current page
 export function getVisibleImages() {
     const images = [];
-    // Target only the main image grid, not sidebar or header images
     const imageGrid = document.querySelector('.main-content, [role="main"]') || document.body;
     const imageElements = imageGrid.querySelectorAll('.image-card img, .grid-card img');
 
     imageElements.forEach((img, index) => {
-        // Exclude studio logos and other non-content images
         if (img.src && 
             img.src.includes('/image/') && 
             !img.src.includes('/studio/') && 
             !img.closest('.logo, .sidebar, .header')) {
             
-            // Extract image ID from src if possible
             const idMatch = img.src.match(/\/image\/(\d+)/);
             const id = idMatch ? idMatch[1] : `img_${index}`;
 
-            // Convert thumbnail URLs to full image URLs
             const fullImageUrl = img.src.includes('/thumbnail/')
                 ? img.src.replace('/thumbnail/', '/image/')
                 : img.src;
+
+            // Find the preview button associated with this image
+            const card = img.closest('.image-card, .grid-card');
+            const previewButton = card?.querySelector('.preview-button');
 
             images.push({
                 id,
                 title: img.alt || `Image ${index + 1}`,
                 paths: {
                     image: fullImageUrl
-                }
+                },
+                // Store reference to preview button
+                previewButton: previewButton
             });
         }
     });

@@ -19,7 +19,8 @@ let totalImageCount = 0;
 let totalPages = 0;
 let storedContextInfo = null;
 
-export async function openDeck() {
+
+export async function openDeck(targetImageId = null) {
     console.log('[Image Deck] Opening deck...');
     console.log('[Image Deck] Current URL:', window.location.pathname);
     
@@ -521,6 +522,7 @@ export async function loadNextChunk(container = null) {
         }
     }
 }
+
 // Close the deck
 export function closeDeck() {
     stopAutoPlay();
