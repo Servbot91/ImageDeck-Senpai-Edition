@@ -83,11 +83,23 @@ function initPreviewObserver() {
                                 newButton.addEventListener('click', (e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
-                                    console.log('[Image Deck] Preview button clicked');
+                                    console.log('[Image Deck] Preview button clicked (dynamic)');
                                     
-                                    // Import and call openDeck
+                                    // Find the image associated with this preview button
+                                    const card = previewContainer.closest('.image-card, .grid-card');
+                                    const img = card?.querySelector('img[src*="/image/"]');
+                                    
+                                    let targetImageId = null;
+                                    if (img) {
+                                        const idMatch = img.src.match(/\/image\/(\d+)/);
+                                        if (idMatch) {
+                                            targetImageId = idMatch[1];
+                                        }
+                                    }
+                                    
+                                    // Pass the target image ID to openDeck
                                     import('./deck.js').then(module => {
-                                        module.openDeck();
+                                        module.openDeck(targetImageId);
                                     });
                                 });
                             }
@@ -121,8 +133,21 @@ function processPreviewButton(previewContainer) {
                 e.stopPropagation();
                 console.log('[Image Deck] Preview button clicked');
                 
+                // Find the image associated with this preview button
+                const card = previewContainer.closest('.image-card, .grid-card');
+                const img = card?.querySelector('img[src*="/image/"]');
+                
+                let targetImageId = null;
+                if (img) {
+                    const idMatch = img.src.match(/\/image\/(\d+)/);
+                    if (idMatch) {
+                        targetImageId = idMatch[1];
+                    }
+                }
+                
+                // Pass the target image ID to openDeck
                 import('./deck.js').then(module => {
-                    module.openDeck();
+                    module.openDeck(targetImageId);
                 });
             });
         }

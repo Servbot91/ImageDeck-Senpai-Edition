@@ -126,7 +126,8 @@
     const images = [];
     const imageGrid = document.querySelector('.main-content, [role="main"]') || document.body;
     const imageElements = imageGrid.querySelectorAll(".image-card img, .grid-card img");
-    imageElements.forEach((img, index) => {
+    const imageArray = Array.from(imageElements);
+    imageArray.forEach((img, index) => {
       if (img.src && img.src.includes("/image/") && !img.src.includes("/studio/") && !img.closest(".logo, .sidebar, .header")) {
         const idMatch = img.src.match(/\/image\/(\d+)/);
         const id = idMatch ? idMatch[1] : `img_${index}`;
@@ -1459,7 +1460,7 @@
     stopAutoPlay: () => stopAutoPlay
   });
   async function openDeck(targetImageId = null) {
-    console.log("[Image Deck] Opening deck...");
+    console.log("[Image Deck] Opening deck...", targetImageId);
     console.log("[Image Deck] Current URL:", window.location.pathname);
     try {
       currentChunkPage2 = 1;
@@ -1512,7 +1513,10 @@
       let imageResult;
       const isListContext = contextInfo && (contextInfo.isSingleGallery || contextInfo.isGalleryListing || contextInfo.type === "images" || contextInfo.isFilteredView || contextInfo.isPerformerContext || // Add performer context
       window.location.pathname.startsWith("/images"));
-      if (isListContext) {
+      if (targetImageId) {
+        console.log("[Image Deck] Using visible images for target navigation");
+        imageResult = getVisibleImages();
+      } else if (isListContext) {
         console.log("[Image Deck] Using context-based fetching for page 1");
         imageResult = await fetchContextImages(contextInfo, 1, chunkSize);
       } else {
@@ -1566,7 +1570,23 @@
           }
         });
       }
-      restorePosition();
+      if (targetImageId) {
+        const targetIndex = currentImages.findIndex((img) => img.id === targetImageId);
+        if (targetIndex !== -1) {
+          console.log(`[Image Deck] Navigating to target image at index ${targetIndex}`);
+          setTimeout(() => {
+            if (currentSwiper) {
+              currentSwiper.slideTo(targetIndex, 0);
+              updateUI(container2);
+            }
+          }, 100);
+        } else {
+          console.warn(`[Image Deck] Target image ${targetImageId} not found in current images`);
+          restorePosition();
+        }
+      } else {
+        restorePosition();
+      }
       updateUI(container2);
       Promise.resolve().then(() => (init_controls(), controls_exports)).then((module) => {
         module.setupEventHandlers(container2);
@@ -2011,9 +2031,18 @@
                   newButton.addEventListener("click", (e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    console.log("[Image Deck] Preview button clicked");
+                    console.log("[Image Deck] Preview button clicked (dynamic)");
+                    const card = previewContainer.closest(".image-card, .grid-card");
+                    const img = card?.querySelector('img[src*="/image/"]');
+                    let targetImageId = null;
+                    if (img) {
+                      const idMatch = img.src.match(/\/image\/(\d+)/);
+                      if (idMatch) {
+                        targetImageId = idMatch[1];
+                      }
+                    }
                     Promise.resolve().then(() => (init_deck(), deck_exports)).then((module) => {
-                      module.openDeck();
+                      module.openDeck(targetImageId);
                     });
                   });
                 }
@@ -2040,8 +2069,17 @@
           e.preventDefault();
           e.stopPropagation();
           console.log("[Image Deck] Preview button clicked");
+          const card = previewContainer.closest(".image-card, .grid-card");
+          const img = card?.querySelector('img[src*="/image/"]');
+          let targetImageId = null;
+          if (img) {
+            const idMatch = img.src.match(/\/image\/(\d+)/);
+            if (idMatch) {
+              targetImageId = idMatch[1];
+            }
+          }
           Promise.resolve().then(() => (init_deck(), deck_exports)).then((module) => {
-            module.openDeck();
+            module.openDeck(targetImageId);
           });
         });
       }

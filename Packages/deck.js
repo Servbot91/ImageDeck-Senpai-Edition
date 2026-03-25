@@ -21,7 +21,7 @@ let storedContextInfo = null;
 
 
 export async function openDeck(targetImageId = null) {
-    console.log('[Image Deck] Opening deck...');
+    console.log('[Image Deck] Opening deck...', targetImageId);
     console.log('[Image Deck] Current URL:', window.location.pathname);
     
     try {
@@ -97,7 +97,8 @@ export async function openDeck(targetImageId = null) {
         // 2. Determine what content to show
         let imageResult;
 
-        // Ensure this check includes your gallery listing
+        // CRITICAL FIX: When we have a targetImageId, we should use visible images 
+        // to maintain the current view context
         const isListContext = contextInfo && (
             contextInfo.isSingleGallery || 
             contextInfo.isGalleryListing || 
@@ -107,7 +108,11 @@ export async function openDeck(targetImageId = null) {
             window.location.pathname.startsWith('/images') // Added this
         );
 
-        if (isListContext) {
+        // If we have a target image ID, prefer visible images to maintain context
+        if (targetImageId) {
+            console.log('[Image Deck] Using visible images for target navigation');
+            imageResult = getVisibleImages();
+        } else if (isListContext) {
             console.log('[Image Deck] Using context-based fetching for page 1');
             imageResult = await fetchContextImages(contextInfo, 1, chunkSize);
         } else {
@@ -179,8 +184,25 @@ export async function openDeck(targetImageId = null) {
             });
         }
         
-        // Restore position
-        restorePosition();
+        // Restore position or navigate to target image
+        if (targetImageId) {
+            // Find the index of the target image
+            const targetIndex = currentImages.findIndex(img => img.id === targetImageId);
+            if (targetIndex !== -1) {
+                console.log(`[Image Deck] Navigating to target image at index ${targetIndex}`);
+                setTimeout(() => {
+                    if (currentSwiper) {
+                        currentSwiper.slideTo(targetIndex, 0);
+                        updateUI(container);
+                    }
+                }, 100);
+            } else {
+                console.warn(`[Image Deck] Target image ${targetImageId} not found in current images`);
+                restorePosition();
+            }
+        } else {
+            restorePosition();
+        }
 
         // Initial UI update
         updateUI(container);

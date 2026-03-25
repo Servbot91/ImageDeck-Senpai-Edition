@@ -157,7 +157,10 @@ export function getVisibleImages() {
     const imageGrid = document.querySelector('.main-content, [role="main"]') || document.body;
     const imageElements = imageGrid.querySelectorAll('.image-card img, .grid-card img');
 
-    imageElements.forEach((img, index) => {
+    // Convert NodeList to Array to preserve order
+    const imageArray = Array.from(imageElements);
+
+    imageArray.forEach((img, index) => {
         if (img.src && 
             img.src.includes('/image/') && 
             !img.src.includes('/studio/') && 

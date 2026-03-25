@@ -1,5 +1,5 @@
 name: Deck Viewer
-description: An optimized fullscreen image viewer with one-handed controls complete with performer, gallery, and image integration.
+description: An optimized fullscreen image viewer with one-handed controls complete with performer, gallery, and image integration that hijacks the default stash viewbox.
 version: 1.0
 
 settings:
