@@ -525,120 +525,6 @@
     }
   });
 
-  // swiper.js
-  function getEffectOptions(effect, pluginConfig2) {
-    const configFn = EFFECT_CONFIGS[effect] || EFFECT_CONFIGS.default;
-    return configFn(pluginConfig2.effectDepth);
-  }
-  function initSwiper(container, images, pluginConfig2, updateUICallback, savePositionCallback, contextInfo2) {
-    const swiperEl = container.querySelector(".swiper");
-    if (!swiperEl || swiperEl.swiper) return swiperEl?.swiper;
-    const isLooped = false;
-    const effectOptions = getEffectOptions(pluginConfig2.transitionEffect, pluginConfig2);
-    const swiperConfig = {
-      // Core Layout
-      effect: pluginConfig2.transitionEffect,
-      centeredSlides: true,
-      slidesPerView: 1,
-      initialSlide: 0,
-      // Zoom functionality
-      zoom: {
-        maxRatio: 3,
-        minRatio: 1,
-        toggle: true,
-        containerClass: "swiper-zoom-container",
-        zoomedSlideClass: "swiper-slide-zoomed"
-      },
-      // Center Fixes
-      centeredSlidesBounds: true,
-      centerInsufficientSlides: true,
-      // Loop + Virtual Stability
-      loop: isLooped,
-      loopedSlides: 2,
-      loopPreventsSliding: false,
-      virtual: {
-        slides: images.map((img) => getSlideTemplate(img, contextInfo2, false)),
-        cache: true,
-        addSlidesBefore: 3,
-        addSlidesAfter: 3,
-        renderSlide: (slideContent, index) => {
-          return `<div class="swiper-slide" data-index="${index}">${slideContent || ""}</div>`;
-        }
-      },
-      ...effectOptions,
-      on: {
-        click(s, event) {
-          const zoomContainer = event.target.closest('.swiper-zoom-container[data-type="gallery"]');
-          if (zoomContainer?.dataset.url) {
-            window.open(zoomContainer.dataset.url, "_blank");
-          }
-        },
-        slideChange() {
-          updateUICallback?.(container);
-          savePositionCallback?.();
-        },
-        // Handle infinite loading/pagination logic
-        slideChangeTransitionEnd() {
-          const total = this.virtual?.slides?.length || this.slides.length;
-          if (total > 0 && this.activeIndex >= total - 3) {
-            const nextBtn = document.querySelector('[data-action="next-chunk"]');
-            if (nextBtn && !nextBtn.disabled) {
-              nextBtn.click();
-            }
-          }
-        }
-      }
-    };
-    const swiper = new Swiper(swiperEl, swiperConfig);
-    const loader = container.querySelector(".image-deck-loading");
-    if (loader) loader.style.display = "none";
-    return swiper;
-  }
-  var GALLERY_ICON_SVG, EFFECT_CONFIGS, getSlideTemplate;
-  var init_swiper = __esm({
-    "swiper.js"() {
-      GALLERY_ICON_SVG = '<svg fill="white" width="16" height="16" viewBox="0 0 36 36" style="vertical-align: middle;" xmlns="http://www.w3.org/2000/svg"><path d="M32,4H4A2,2,0,0,0,2,6V30a2,2,0,0,0,2,2H32a2,2,0,0,0,2-2V6A2,2,0,0,0,32,4ZM4,30V6H32V30Z"></path><path d="M8.92,14a3,3,0,1,0-3-3A3,3,0,0,0,8.92,14Zm0-4.6A1.6,1.6,0,1,1,7.33,11,1.6,1.6,0,0,1,8.92,9.41Z"></path><path d="M22.78,15.37l-5.4,5.4-4-4a1,1,0,0,0-1.41,0L5.92,22.9v2.83l6.79-6.79L16,22.18l-3.75,3.75H15l8.45-8.45L30,24V21.18l-5.81-5.81A1,1,0,0,0,22.78,15.37Z"></path></svg>';
-      EFFECT_CONFIGS = {
-        cards: () => ({ cardsEffect: { slideShadows: false, rotate: true, perSlideRotate: 2, perSlideOffset: 8 } }),
-        coverflow: (depth) => ({ coverflowEffect: { rotate: 30, stretch: 0, depth: Math.min(depth, 100), modifier: 1, slideShadows: false } }),
-        flip: () => ({ flipEffect: { slideShadows: false, limitRotation: true } }),
-        cube: () => ({ cubeEffect: { shadow: false, slideShadows: false } }),
-        fade: () => ({ fadeEffect: { crossFade: true }, speed: 200 }),
-        default: () => ({ spaceBetween: 20, slidesPerView: 1 })
-      };
-      getSlideTemplate = (img, contextInfo2, isEager = false) => {
-        const fullSrc = img.paths.image;
-        const isGallery = img.url && !contextInfo2?.isSingleGallery;
-        const loading = isEager ? "eager" : "lazy";
-        const title = img.title || "Untitled";
-        if (isGallery) {
-          const imageCountDisplay = img.image_count !== void 0 ? `${GALLERY_ICON_SVG}: ${img.image_count}` : "";
-          let performerDisplay = "";
-          if (img.performers && img.performers.length > 0) {
-            const performerNames = img.performers.map((p) => p.name).join(", ");
-            performerDisplay = `<div class="gallery-performers" style="margin-top: 5px; font-size: 18px; color: #ccc;">${performerNames}</div>`;
-          }
-          return `
-            <div class="swiper-zoom-container" data-type="gallery" data-url="${img.url}">
-                <div class="gallery-cover-container">
-                    <div class="gallery-cover-title" title="${title}">${title}</div>
-                    ${imageCountDisplay ? `<div class="gallery-image-count" style="font-size: 18px; color: #ccc; margin-top: 3px;">${imageCountDisplay}</div>` : ""}
-                    <a href="${img.url}" target="_blank" class="gallery-cover-link">
-                        <img src="${fullSrc}" alt="${title}" decoding="async" loading="${loading}" />
-                    </a>
-                    ${performerDisplay}
-                </div>
-            </div>`;
-        }
-        return `
-        <div class="swiper-zoom-container">
-            <img src="${fullSrc}" alt="${title}" decoding="async" loading="${loading}" 
-                 style="max-width: 100%; height: auto; display: block; margin: 0 auto;" />
-        </div>`;
-      };
-    }
-  });
-
   // graphql.js
   async function fetchImageMetadata(imageId) {
     const query = `query FindImage($id: ID!) {
@@ -769,6 +655,9 @@
   });
 
   // metadata.js
+  function setCurrentSwiper(swiper) {
+    currentSwiperRef = swiper;
+  }
   async function openMetadataModal() {
     if (!currentSwiperRef) return;
     const currentIndex = currentSwiperRef.activeIndex;
@@ -950,6 +839,120 @@
     }
   });
 
+  // swiper.js
+  function getEffectOptions(effect, pluginConfig2) {
+    const configFn = EFFECT_CONFIGS[effect] || EFFECT_CONFIGS.default;
+    return configFn(pluginConfig2.effectDepth);
+  }
+  function initSwiper(container2, images, pluginConfig2, updateUICallback, savePositionCallback, contextInfo2) {
+    const swiperEl = container2.querySelector(".swiper");
+    if (!swiperEl || swiperEl.swiper) return swiperEl?.swiper;
+    const isLooped = false;
+    const effectOptions = getEffectOptions(pluginConfig2.transitionEffect, pluginConfig2);
+    const swiperConfig = {
+      // Core Layout
+      effect: pluginConfig2.transitionEffect,
+      centeredSlides: true,
+      slidesPerView: 1,
+      initialSlide: 0,
+      // Zoom functionality
+      zoom: {
+        maxRatio: 3,
+        minRatio: 1,
+        toggle: true,
+        containerClass: "swiper-zoom-container",
+        zoomedSlideClass: "swiper-slide-zoomed"
+      },
+      // Center Fixes
+      centeredSlidesBounds: true,
+      centerInsufficientSlides: true,
+      // Loop + Virtual Stability
+      loop: isLooped,
+      loopedSlides: 2,
+      loopPreventsSliding: false,
+      virtual: {
+        slides: images.map((img) => getSlideTemplate(img, contextInfo2, false)),
+        cache: true,
+        addSlidesBefore: 3,
+        addSlidesAfter: 3,
+        renderSlide: (slideContent, index) => {
+          return `<div class="swiper-slide" data-index="${index}">${slideContent || ""}</div>`;
+        }
+      },
+      ...effectOptions,
+      on: {
+        click(s, event) {
+          const zoomContainer = event.target.closest('.swiper-zoom-container[data-type="gallery"]');
+          if (zoomContainer?.dataset.url) {
+            window.open(zoomContainer.dataset.url, "_blank");
+          }
+        },
+        slideChange() {
+          updateUICallback?.(container2);
+          savePositionCallback?.();
+        },
+        // Handle infinite loading/pagination logic
+        slideChangeTransitionEnd() {
+          const total = this.virtual?.slides?.length || this.slides.length;
+          if (total > 0 && this.activeIndex >= total - 3) {
+            const nextBtn = document.querySelector('[data-action="next-chunk"]');
+            if (nextBtn && !nextBtn.disabled) {
+              nextBtn.click();
+            }
+          }
+        }
+      }
+    };
+    const swiper = new Swiper(swiperEl, swiperConfig);
+    const loader = container2.querySelector(".image-deck-loading");
+    if (loader) loader.style.display = "none";
+    return swiper;
+  }
+  var GALLERY_ICON_SVG, EFFECT_CONFIGS, getSlideTemplate;
+  var init_swiper = __esm({
+    "swiper.js"() {
+      GALLERY_ICON_SVG = '<svg fill="white" width="16" height="16" viewBox="0 0 36 36" style="vertical-align: middle;" xmlns="http://www.w3.org/2000/svg"><path d="M32,4H4A2,2,0,0,0,2,6V30a2,2,0,0,0,2,2H32a2,2,0,0,0,2-2V6A2,2,0,0,0,32,4ZM4,30V6H32V30Z"></path><path d="M8.92,14a3,3,0,1,0-3-3A3,3,0,0,0,8.92,14Zm0-4.6A1.6,1.6,0,1,1,7.33,11,1.6,1.6,0,0,1,8.92,9.41Z"></path><path d="M22.78,15.37l-5.4,5.4-4-4a1,1,0,0,0-1.41,0L5.92,22.9v2.83l6.79-6.79L16,22.18l-3.75,3.75H15l8.45-8.45L30,24V21.18l-5.81-5.81A1,1,0,0,0,22.78,15.37Z"></path></svg>';
+      EFFECT_CONFIGS = {
+        cards: () => ({ cardsEffect: { slideShadows: false, rotate: true, perSlideRotate: 2, perSlideOffset: 8 } }),
+        coverflow: (depth) => ({ coverflowEffect: { rotate: 30, stretch: 0, depth: Math.min(depth, 100), modifier: 1, slideShadows: false } }),
+        flip: () => ({ flipEffect: { slideShadows: false, limitRotation: true } }),
+        cube: () => ({ cubeEffect: { shadow: false, slideShadows: false } }),
+        fade: () => ({ fadeEffect: { crossFade: true }, speed: 200 }),
+        default: () => ({ spaceBetween: 20, slidesPerView: 1 })
+      };
+      getSlideTemplate = (img, contextInfo2, isEager = false) => {
+        const fullSrc = img.paths.image;
+        const isGallery = img.url && !contextInfo2?.isSingleGallery;
+        const loading = isEager ? "eager" : "lazy";
+        const title = img.title || "Untitled";
+        if (isGallery) {
+          const imageCountDisplay = img.image_count !== void 0 ? `${GALLERY_ICON_SVG}: ${img.image_count}` : "";
+          let performerDisplay = "";
+          if (img.performers && img.performers.length > 0) {
+            const performerNames = img.performers.map((p) => p.name).join(", ");
+            performerDisplay = `<div class="gallery-performers" style="margin-top: 5px; font-size: 18px; color: #ccc;">${performerNames}</div>`;
+          }
+          return `
+            <div class="swiper-zoom-container" data-type="gallery" data-url="${img.url}">
+                <div class="gallery-cover-container">
+                    <div class="gallery-cover-title" title="${title}">${title}</div>
+                    ${imageCountDisplay ? `<div class="gallery-image-count" style="font-size: 18px; color: #ccc; margin-top: 3px;">${imageCountDisplay}</div>` : ""}
+                    <a href="${img.url}" target="_blank" class="gallery-cover-link">
+                        <img src="${fullSrc}" alt="${title}" decoding="async" loading="${loading}" />
+                    </a>
+                    ${performerDisplay}
+                </div>
+            </div>`;
+        }
+        return `
+        <div class="swiper-zoom-container">
+            <img src="${fullSrc}" alt="${title}" decoding="async" loading="${loading}" 
+                 style="max-width: 100%; height: auto; display: block; margin: 0 auto;" />
+        </div>`;
+      };
+    }
+  });
+
   // controls.js
   var controls_exports = {};
   __export(controls_exports, {
@@ -958,10 +961,10 @@
     setupEventHandlers: () => setupEventHandlers
   });
   function toggleFullscreen() {
-    const container = document.querySelector(".image-deck-container");
-    if (!container) return;
+    const container2 = document.querySelector(".image-deck-container");
+    if (!container2) return;
     if (!document.fullscreenElement) {
-      container.requestFullscreen().catch((err) => {
+      container2.requestFullscreen().catch((err) => {
         console.warn("[Image Deck] Fullscreen request failed:", err);
       });
     } else {
@@ -982,29 +985,29 @@
     return false;
   }
   function updateGalleryStateClass() {
-    const container = document.querySelector(".image-deck-container");
-    if (!container) return;
+    const container2 = document.querySelector(".image-deck-container");
+    if (!container2) return;
     if (isCurrentSlideGallery()) {
-      container.classList.add("gallery-active");
+      container2.classList.add("gallery-active");
     } else {
-      container.classList.remove("gallery-active");
+      container2.classList.remove("gallery-active");
     }
   }
-  function setupEventHandlers(container) {
+  function setupEventHandlers(container2) {
     setDeckActive(true);
-    const closeBtn = container.querySelector(".image-deck-close");
+    const closeBtn = container2.querySelector(".image-deck-close");
     if (closeBtn) {
       closeBtn.addEventListener("click", closeDeck);
     }
-    const fullscreenBtn = container.querySelector(".image-deck-fullscreen");
+    const fullscreenBtn = container2.querySelector(".image-deck-fullscreen");
     if (fullscreenBtn) {
       fullscreenBtn.addEventListener("click", toggleFullscreen);
     }
-    const metadataCloseBtn = container.querySelector(".image-deck-metadata-close");
+    const metadataCloseBtn = container2.querySelector(".image-deck-metadata-close");
     if (metadataCloseBtn) {
       metadataCloseBtn.addEventListener("click", closeMetadataModal);
     }
-    const controlButtons = container.querySelectorAll(".image-deck-control-btn");
+    const controlButtons = container2.querySelectorAll(".image-deck-control-btn");
     controlButtons.forEach((button) => {
       button.addEventListener("click", (e) => {
         const action = button.dataset.action;
@@ -1056,7 +1059,7 @@
             }
             break;
           case "next-chunk":
-            loadNextChunk();
+            loadNextChunk(container2);
             break;
           default:
             console.log("[Image Deck] Unknown action:", action);
@@ -1073,14 +1076,14 @@
     }
     keyboardHandler = handleKeyboard;
     document.addEventListener("keydown", handleKeyboard, true);
-    setupSwipeGestures(container);
-    setupMouseWheel(container);
+    setupSwipeGestures(container2);
+    setupMouseWheel(container2);
   }
-  function setupSwipeGestures(container) {
+  function setupSwipeGestures(container2) {
     let touchStartY = 0;
     let touchDeltaY = 0;
     let rafId = null;
-    const swiperEl = container.querySelector(".image-deck-swiper");
+    const swiperEl = container2.querySelector(".image-deck-swiper");
     if (!swiperEl) return;
     swiperEl.addEventListener("touchstart", (e) => {
       if (e.target.closest(".image-deck-metadata-modal")) return;
@@ -1092,8 +1095,8 @@
       if (touchDeltaY > 50) {
         if (rafId) cancelAnimationFrame(rafId);
         rafId = requestAnimationFrame(() => {
-          container.style.transform = `translateY(${touchDeltaY * 0.3}px)`;
-          container.style.opacity = Math.max(0.3, 1 - touchDeltaY / 500);
+          container2.style.transform = `translateY(${touchDeltaY * 0.3}px)`;
+          container2.style.opacity = Math.max(0.3, 1 - touchDeltaY / 500);
         });
       }
     }, { passive: true });
@@ -1103,15 +1106,15 @@
         closeDeck();
       } else {
         requestAnimationFrame(() => {
-          container.style.transform = "";
-          container.style.opacity = "";
+          container2.style.transform = "";
+          container2.style.opacity = "";
         });
       }
       touchDeltaY = 0;
     }, { passive: true });
   }
-  function setupMouseWheel(container) {
-    const swiperEl = container.querySelector(".image-deck-swiper");
+  function setupMouseWheel(container2) {
+    const swiperEl = container2.querySelector(".image-deck-swiper");
     if (!swiperEl) return;
     swiperEl.addEventListener("wheel", (e) => {
       const swiper = window.currentSwiperInstance;
@@ -1216,7 +1219,7 @@
               const totalCurrentSlides = window.currentSwiperInstance.virtual ? window.currentSwiperInstance.virtual.slides.length : window.currentSwiperInstance.slides.length;
               const totalPagesLocal = totalPages || 1;
               if (currentIndex >= totalCurrentSlides - 3 && currentChunkPage < totalPagesLocal) {
-                loadNextChunk();
+                loadNextChunk(container);
               }
             }
           }, 100);
@@ -1293,27 +1296,29 @@
         currentChunkPage2 = imageResult.currentPage || 1;
       }
       console.log(`[Image Deck] Opening with ${currentImages.length} items (chunk 1 of ${totalPages2 || 1})`);
-      const container = createDeckUI();
+      const container2 = createDeckUI();
       document.body.classList.add("image-deck-open");
       requestAnimationFrame(() => {
-        container.classList.add("active");
+        container2.classList.add("active");
       });
       currentSwiper = initSwiper(
-        container,
+        container2,
         currentImages,
         pluginConfig,
         () => {
-          updateUI(container);
+          updateUI(container2);
           checkAndLoadNextChunk();
         },
         savePosition,
         contextInfo
       );
       window.currentSwiperInstance = currentSwiper;
+      window.currentImages = currentImages;
+      setCurrentSwiper(currentSwiper);
       restorePosition();
-      updateUI(container);
+      updateUI(container2);
       Promise.resolve().then(() => (init_controls(), controls_exports)).then((module) => {
-        module.setupEventHandlers(container);
+        module.setupEventHandlers(container2);
       });
     } catch (error) {
       console.error("[Image Deck] Error opening deck:", error);
@@ -1323,9 +1328,9 @@
   function createDeckUI() {
     const existing = document.querySelector(".image-deck-container");
     if (existing) existing.remove();
-    const container = document.createElement("div");
-    container.className = `image-deck-container${isMobile ? " mobile-optimized" : ""}`;
-    container.innerHTML = `
+    const container2 = document.createElement("div");
+    container2.className = `image-deck-container${isMobile ? " mobile-optimized" : ""}`;
+    container2.innerHTML = `
         <div class="image-deck-ambient"></div>
         <div class="image-deck-topbar">
             <div class="image-deck-counter"></div>
@@ -1359,10 +1364,10 @@
             </div>
         </div>
     `;
-    document.body.appendChild(container);
-    return container;
+    document.body.appendChild(container2);
+    return container2;
   }
-  function updateUI(container) {
+  function updateUI(container2) {
     if (!currentSwiper || uiUpdatePending) return;
     uiUpdatePending = true;
     requestAnimationFrame(() => {
@@ -1386,14 +1391,14 @@
         }
       }
       if (pluginConfig.showCounter) {
-        const counter = container.querySelector(".image-deck-counter");
+        const counter = container2.querySelector(".image-deck-counter");
         const chunkInfo = totalPages2 > 1 ? ` (chunk ${currentChunkPage2}/${totalPages2})` : "";
         if (counter) {
           counter.textContent = `${current} of ${actualTotal}${chunkInfo}`;
         }
       }
       if (pluginConfig.showProgressBar) {
-        const progress = container.querySelector(".image-deck-progress");
+        const progress = container2.querySelector(".image-deck-progress");
         if (progress) {
           const progressValue = actualTotal > 0 ? current / actualTotal : 0;
           progress.style.transform = `scaleX(${progressValue})`;
@@ -1461,7 +1466,7 @@
       }
     }
   }
-  async function loadNextChunk() {
+  async function loadNextChunk(container2 = null) {
     if (isChunkLoading) {
       console.log("[Image Deck] Load already in progress, skipping...");
       return;
@@ -1483,6 +1488,7 @@
     if (nextChunkButton) {
       nextChunkButton.disabled = true;
       nextChunkButton.style.opacity = "0.5";
+      nextChunkButton.innerHTML = "\u{1F504}";
     }
     if (loadingIndicator) {
       loadingIndicator.style.display = "block";
@@ -1547,8 +1553,8 @@
           });
         }
       }
-      const container = document.querySelector(".image-deck-container");
-      if (container && typeof updateUI === "function") updateUI(container);
+      const container3 = document.querySelector(".image-deck-container");
+      if (container3 && typeof updateUI === "function") updateUI(container3);
       if (loadingIndicator) {
         loadingIndicator.textContent = `\u2713 Loaded ${result.images.length} new items`;
         setTimeout(() => {
@@ -1568,16 +1574,17 @@
       if (nextChunkButton) {
         nextChunkButton.disabled = false;
         nextChunkButton.style.opacity = "1";
+        nextChunkButton.innerHTML = "\u23ED\uFE0F";
       }
     }
   }
   function closeDeck() {
     stopAutoPlay();
-    const container = document.querySelector(".image-deck-container");
-    if (container) {
-      container.classList.remove("active");
+    const container2 = document.querySelector(".image-deck-container");
+    if (container2) {
+      container2.classList.remove("active");
       setTimeout(() => {
-        container.remove();
+        container2.remove();
         document.body.classList.remove("image-deck-open");
       }, 300);
     }
@@ -1594,6 +1601,7 @@
     "deck.js"() {
       init_config();
       init_context();
+      init_metadata();
       init_swiper();
       init_utils();
       GALLERY_ICON_SVG2 = '<svg fill="white" width="16" height="16" viewBox="0 0 36 36" style="vertical-align: middle;" xmlns="http://www.w3.org/2000/svg"><path d="M32,4H4A2,2,0,0,0,2,6V30a2,2,0,0,0,2,2H32a2,2,0,0,0,2-2V6A2,2,0,0,0,32,4ZM4,30V6H32V30Z"></path><path d="M8.92,14a3,3,0,1,0-3-3A3,3,0,0,0,8.92,14Zm0-4.6A1.6,1.6,0,1,1,7.33,11,1.6,1.6,0,0,1,8.92,9.41Z"></path><path d="M22.78,15.37l-5.4,5.4-4-4a1,1,0,0,0-1.41,0L5.92,22.9v2.83l6.79-6.79L16,22.18l-3.75,3.75H15l8.45-8.45L30,24V21.18l-5.81-5.81A1,1,0,0,0,22.78,15.37Z"></path></svg>';

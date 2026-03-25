@@ -128,7 +128,7 @@ export function setupEventHandlers(container) {
                     }
                     break;
                 case 'next-chunk':
-                    loadNextChunk();
+                    loadNextChunk(container);
                     break;
                 default:
                     console.log('[Image Deck] Unknown action:', action);
@@ -331,7 +331,7 @@ function handleKeyboard(e) {
                         const totalPagesLocal = totalPages || 1;
                         
                         if (currentIndex >= totalCurrentSlides - 3 && currentChunkPage < totalPagesLocal) {
-                            loadNextChunk();
+                            loadNextChunk(container);
                         }
                     }
                 }, 100);

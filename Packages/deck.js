@@ -1,5 +1,6 @@
 import { getPluginConfig, injectDynamicStyles, PLUGIN_NAME } from './config.js';
 import { detectContext, fetchContextImages, getVisibleImages, getVisibleGalleryCovers } from './context.js';
+import { setCurrentSwiper } from './metadata.js';
 import { initSwiper } from './swiper.js';
 import { isMobile } from './utils.js';
 
@@ -113,7 +114,8 @@ const isListContext = contextInfo && (
         );
         
         window.currentSwiperInstance = currentSwiper;
-        
+        window.currentImages = currentImages;
+		setCurrentSwiper(currentSwiper);
         // Restore position
         restorePosition();
 
@@ -315,7 +317,7 @@ function restorePosition() {
 
 let isChunkLoading = false; 
 
-export async function loadNextChunk() {
+export async function loadNextChunk(container = null) {
     // 1. Guard: Prevent multiple simultaneous loads
     if (isChunkLoading) {
         console.log('[Image Deck] Load already in progress, skipping...');
@@ -342,6 +344,7 @@ export async function loadNextChunk() {
     if (nextChunkButton) {
         nextChunkButton.disabled = true;
         nextChunkButton.style.opacity = '0.5';
+		nextChunkButton.innerHTML = '🔄';
     }
 
     if (loadingIndicator) {
@@ -445,6 +448,7 @@ export async function loadNextChunk() {
         if (nextChunkButton) {
             nextChunkButton.disabled = false;
             nextChunkButton.style.opacity = '1';
+			nextChunkButton.innerHTML = '⏭️';
         }
     }
 }
