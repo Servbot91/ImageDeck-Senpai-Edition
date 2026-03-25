@@ -1,3 +1,4 @@
+// Add this to the detectContext function around line 40, after the /images page handling
 export function detectContext() {
     const path = window.location.pathname;
     const hash = window.location.hash;
@@ -20,7 +21,7 @@ export function detectContext() {
         }
     }
 
-    // 3.Handle /images page (with OR without search params)
+    // 3. Handle /images page (with OR without search params)
     if (path.startsWith('/images')) {
         const filters = parseUrlFilters(search);
         return {
@@ -32,7 +33,43 @@ export function detectContext() {
         };
     }
 
-    // 4. Handle path-based patterns (Performers, Tags, etc.)
+    // 4. Handle performer pages with gallery/image tabs
+    const performerMatch = path.match(/^\/performers\/(\d+)(?:\/(galleries|images))?/);
+    if (performerMatch) {
+        const [, performerId, tab] = performerMatch;
+        const isImagesTab = tab === 'images' || hash.includes('images') || 
+                           document.querySelector('.nav-tabs .active')?.textContent?.includes('Images');
+        const isGalleriesTab = tab === 'galleries' || hash.includes('galleries') ||
+                              document.querySelector('.nav-tabs .active')?.textContent?.includes('Galleries');
+
+        // Default to images tab if no specific tab is indicated
+        const activeTab = isGalleriesTab ? 'galleries' : 'images';
+
+        // Create filter for performer
+        const filter = {
+            performers: { value: [performerId], modifier: "INCLUDES" }
+        };
+
+        // Parse sort parameters from URL
+        const params = new URLSearchParams(search);
+        if (params.has('sortby')) {
+            filter.sortBy = params.get('sortby');
+        }
+        if (params.has('sortdir')) {
+            filter.sortDir = params.get('sortdir');
+        }
+
+        return {
+            type: activeTab,
+            id: performerId,
+            filter: filter,
+            isPerformerContext: true,
+            performerId: performerId,
+            hash: hash
+        };
+    }
+
+    // 5. Handle path-based patterns (Performers, Tags, etc.) - existing code
     const idMatch = path.match(/\/(\w+)\/(\d+)/);
     if (idMatch) {
         const [, type, id] = idMatch;
@@ -50,7 +87,7 @@ export function detectContext() {
         }
     }
 
-    // 5. Fallback: If we see images, at least try to paginate the general list
+    // 6. Fallback: If we see images, at least try to paginate the general list
     if (document.querySelectorAll('img[src*="/image/"]').length > 0) {
         return {
             type: 'images',
@@ -62,6 +99,7 @@ export function detectContext() {
 
     return null;
 }
+
 
 // Parse URL filter parameters
 function parseUrlFilters(search) {

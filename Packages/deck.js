@@ -1,5 +1,6 @@
 import { getPluginConfig, injectDynamicStyles, PLUGIN_NAME } from './config.js';
 import { detectContext, fetchContextImages, getVisibleImages, getVisibleGalleryCovers } from './context.js';
+import { setCurrentSwiper } from './metadata.js';
 import { initSwiper } from './swiper.js';
 import { isMobile } from './utils.js';
 
@@ -37,33 +38,73 @@ export async function openDeck() {
         injectDynamicStyles(pluginConfig);
 
         // 1. Context Detection Logic
-let detectedContext = detectContext();
+        let detectedContext = detectContext();
 
-// If we are on a gallery listing page, ensure detectContext 
-// has correctly identified it. If not, we force the refresh here.
-if (window.location.pathname === '/galleries' && !detectedContext?.isGalleryListing) {
-    detectedContext = {
-        type: 'galleries',
-        isGalleryListing: true,
-        filter: parseUrlFilters(window.location.search) // This is the crucial part
-    };
-}
+        // Special handling for performer pages
+        const path = window.location.pathname;
+        if (path.match(/^\/performers\/\d+/) && !detectedContext) {
+            const performerMatch = path.match(/^\/performers\/(\d+)/);
+            if (performerMatch) {
+                const performerId = performerMatch[1];
+                // Determine if we're on images or galleries tab
+                const isImagesTab = path.includes('/images') || 
+                                   window.location.hash.includes('images') ||
+                                   document.querySelector('.nav-tabs .active')?.textContent?.includes('Images');
+                const isGalleriesTab = path.includes('/galleries') || 
+                                      window.location.hash.includes('galleries') ||
+                                      document.querySelector('.nav-tabs .active')?.textContent?.includes('Galleries');
+                
+                const type = isGalleriesTab ? 'galleries' : 'images';
+                
+                detectedContext = {
+                    type: type,
+                    id: performerId,
+                    performerId: performerId,
+                    isPerformerContext: true,
+                    filter: {
+                        performers: { value: [performerId], modifier: "INCLUDES" },
+                        sortBy: 'created_at',
+                        sortDir: 'desc'
+                    }
+                };
+                
+                // Parse URL parameters for sorting
+                const params = new URLSearchParams(window.location.search);
+                if (params.has('sortby')) {
+                    detectedContext.filter.sortBy = params.get('sortby');
+                }
+                if (params.has('sortdir')) {
+                    detectedContext.filter.sortDir = params.get('sortdir');
+                }
+            }
+        }
 
-storedContextInfo = detectedContext;
-contextInfo = detectedContext;
-console.log('[Image Deck] Context assigned:', contextInfo);
+        // If we are on a gallery listing page, ensure detectContext 
+        // has correctly identified it. If not, we force the refresh here.
+        if (window.location.pathname === '/galleries' && !detectedContext?.isGalleryListing) {
+            detectedContext = {
+                type: 'galleries',
+                isGalleryListing: true,
+                filter: parseUrlFilters(window.location.search) // This is the crucial part
+            };
+        }
 
-// 2. Determine what content to show
-let imageResult;
+        storedContextInfo = detectedContext;
+        contextInfo = detectedContext;
+        console.log('[Image Deck] Context assigned:', contextInfo);
 
-// Ensure this check includes your gallery listing
-const isListContext = contextInfo && (
-    contextInfo.isSingleGallery || 
-    contextInfo.isGalleryListing || 
-    contextInfo.type === 'images' || 
-    contextInfo.isFilteredView ||
-    window.location.pathname.startsWith('/images') // Added this
-);
+        // 2. Determine what content to show
+        let imageResult;
+
+        // Ensure this check includes your gallery listing
+        const isListContext = contextInfo && (
+            contextInfo.isSingleGallery || 
+            contextInfo.isGalleryListing || 
+            contextInfo.type === 'images' || 
+            contextInfo.isFilteredView ||
+            contextInfo.isPerformerContext || // Add performer context
+            window.location.pathname.startsWith('/images') // Added this
+        );
 
         if (isListContext) {
             console.log('[Image Deck] Using context-based fetching for page 1');
@@ -113,6 +154,29 @@ const isListContext = contextInfo && (
         );
         
         window.currentSwiperInstance = currentSwiper;
+        window.currentImages = currentImages;
+        setCurrentSwiper(currentSwiper);
+        
+        // Add zoom event listeners for UI fading
+        if (currentSwiper) {
+            currentSwiper.on('zoomChange', (swiper, scale) => {
+                const topBar = container.querySelector('.image-deck-topbar');
+                const controls = container.querySelector('.image-deck-controls');
+                const speedIndicator = container.querySelector('.image-deck-speed');
+                
+                if (scale > 1) {
+                    // Fade out UI elements when zoomed in
+                    if (topBar) topBar.style.opacity = '0';
+                    if (controls) controls.style.opacity = '0';
+                    if (speedIndicator) speedIndicator.style.opacity = '0';
+                } else {
+                    // Fade in UI elements when zoomed out
+                    if (topBar) topBar.style.opacity = '1';
+                    if (controls) controls.style.opacity = '1';
+                    if (speedIndicator) speedIndicator.style.opacity = '1';
+                }
+            });
+        }
         
         // Restore position
         restorePosition();
@@ -153,14 +217,18 @@ function createDeckUI() {
         <div class="image-deck-swiper swiper">
             <div class="swiper-wrapper"></div>
         </div>
-        <div class="image-deck-controls">
-            <button class="image-deck-control-btn" data-action="prev">◀</button>
-            <button class="image-deck-control-btn" data-action="play">▶</button>
-            <button class="image-deck-control-btn" data-action="next">▶</button>
-            <button class="image-deck-control-btn image-deck-info-btn" data-action="info" title="Image Info (I)">ℹ</button>
-            <button class="image-deck-control-btn" data-action="zoom-in" title="Zoom In (+)">+</button>
-            <button class="image-deck-control-btn" data-action="zoom-out" title="Zoom Out (-)">-</button>
-            <button class="image-deck-control-btn" data-action="next-chunk" title="Load Next Chunk">⏭️</button>
+        <div class="image-deck-controls-wrapper">
+            <div class="image-deck-zoom-controls">
+                <button class="image-deck-control-btn" data-action="zoom-in" title="Zoom In (+)">➕</button>
+                <button class="image-deck-control-btn" data-action="zoom-out" title="Zoom Out (-)">➖</button>
+            </div>
+            <div class="image-deck-navigation-controls">
+                <button class="image-deck-control-btn" data-action="prev">◀</button>
+                <button class="image-deck-control-btn" data-action="play">▶</button>
+                <button class="image-deck-control-btn" data-action="next">▶</button>
+                <button class="image-deck-control-btn image-deck-info-btn" data-action="info" title="Image Info (I)">ℹ</button>
+                <button class="image-deck-control-btn" data-action="next-chunk" title="Load Next Chunk">⏭️</button>
+            </div>
         </div>
         <div class="image-deck-speed">Speed: ${pluginConfig.autoPlayInterval}ms</div>
         <div class="image-deck-metadata-modal">
@@ -181,6 +249,7 @@ function createDeckUI() {
 
 // Update UI elements - debounced to prevent flicker
 	let uiUpdatePending = false;
+	
 function updateUI(container) {
     if (!currentSwiper || uiUpdatePending) return;
 
@@ -315,7 +384,7 @@ function restorePosition() {
 
 let isChunkLoading = false; 
 
-export async function loadNextChunk() {
+export async function loadNextChunk(container = null) {
     // 1. Guard: Prevent multiple simultaneous loads
     if (isChunkLoading) {
         console.log('[Image Deck] Load already in progress, skipping...');
@@ -342,6 +411,7 @@ export async function loadNextChunk() {
     if (nextChunkButton) {
         nextChunkButton.disabled = true;
         nextChunkButton.style.opacity = '0.5';
+		nextChunkButton.innerHTML = '🔄';
     }
 
     if (loadingIndicator) {
@@ -370,41 +440,43 @@ export async function loadNextChunk() {
         // 4. Update UI (Swiper OR Gallery)
         if (currentSwiper && currentSwiper.virtual) {
             // Re-generate ALL slides to ensure formatting consistency across the whole deck
-		const allSlides = currentImages.map(img => {
+			const allSlides = currentImages.map(img => {
 			const fullSrc = img.paths.image;
 			const isGallery = img.url && !contextInfo?.isSingleGallery;
 			const title = img.title || 'Untitled';
-			
+			const loading = 'lazy'; // Consistent with getSlideTemplate
+
 			if (isGallery) {
-				// Create image count display with SVG icon
+				// Use the same template structure as getSlideTemplate
 				const imageCountDisplay = img.image_count !== undefined ? 
 					`${GALLERY_ICON_SVG}: ${img.image_count}` : '';
 				
-				// Create performer display
 				let performerDisplay = '';
 				if (img.performers && img.performers.length > 0) {
-			const performerNames = img.performers.map(p => p.name).join(', ');
-			performerDisplay = `<div class="gallery-performers" style="margin-top: 5px; font-size: 18px; color: #ccc;">${performerNames}</div>`;
-			}
+					const performerNames = img.performers.map(p => p.name).join(', ');
+					performerDisplay = `<div class="gallery-performers" style="margin-top: 5px; font-size: 18px; color: #ccc;">${performerNames}</div>`;
+				}
+        
+        return `
+            <div class="swiper-zoom-container" data-type="gallery" data-url="${img.url}">
+                <div class="gallery-cover-container">
+                    <div class="gallery-cover-title" title="${title}">${title}</div>
+                    ${imageCountDisplay ? `<div class="gallery-image-count" style="font-size: 18px; color: #ccc; margin-top: 3px;">${imageCountDisplay}</div>` : ''}
+                    <a href="${img.url}" target="_blank" class="gallery-cover-link">
+                        <img src="${fullSrc}" alt="${title}" decoding="async" loading="${loading}" />
+                    </a>
+                    ${performerDisplay}
+                </div>
+            </div>`;
+    }
 
-			return `
-				<div class="swiper-zoom-container" data-type="gallery" data-url="${img.url}">
-					<div class="gallery-cover-container">
-						<div class="gallery-cover-title" title="${title}">${title}</div>
-						${imageCountDisplay ? `<div class="gallery-image-count" style="font-size: 18px; color: #ccc; margin-top: 3px;">${imageCountDisplay}</div>` : ''}
-						<a href="${img.url}" target="_blank" class="gallery-cover-link">
-							<img src="${fullSrc}" alt="${title}" decoding="async" loading="lazy" />
-						</a>
-						${performerDisplay}
-					</div>
-				</div>`;
-						} else {
-							return `
-								<div class="swiper-zoom-container" data-type="image">
-									<img src="${fullSrc}" alt="${title}" decoding="async" loading="lazy" style="max-width: 100%; height: auto; display: block; margin: 0 auto;" />
-								</div>`;
-						}
-					});
+		// For regular images, use the same structure as getSlideTemplate
+		return `
+			<div class="swiper-zoom-container" data-type="image">
+				<img src="${fullSrc}" alt="${title}" decoding="async" loading="${loading}" 
+					 style="max-width: 100%; height: auto; display: block; margin: 0 auto;" />
+			</div>`;
+	});
 
             // Update Swiper Virtual Slides
             currentSwiper.virtual.slides = allSlides;
@@ -445,6 +517,7 @@ export async function loadNextChunk() {
         if (nextChunkButton) {
             nextChunkButton.disabled = false;
             nextChunkButton.style.opacity = '1';
+			nextChunkButton.innerHTML = '⏭️';
         }
     }
 }
