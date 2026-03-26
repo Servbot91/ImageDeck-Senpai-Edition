@@ -2,13 +2,9 @@
 
 ## Overview
 
-Deck Viewer is a complete rework and reimagination of the original Image-Deck plugin that hijacks the built in stash image viewer. I have commandeered image-decks base code and have brought it up to a stable and functional standard with enhanced features, a ton of QOL improvements, bug fixes, and optimization. It is meant be used solely over the built in image viewbox and also adds a gallery viewbox.
+Deck Viewer is a complete rework and reimagination of the original Image-Deck plugin that hijacks the built in stash image viewer. It is meant be used solely over the built in image viewbox and also adds a gallery viewbox. The plugin design is intended to make browsing galleries and images more streamlined and less error prone to accidental clicks\swipes and to futher optimize one hand browsing.
 
-The plugin design is intended to make browsing galleries and images more streamlined and less error prone to accidental clicks\swipes and to futher optimize one hand browsing. There may be some references to image-deck in my code only because I couldn't be bothered. I prioritize functionality and quality over minor trivial cosmetics. 
-
-Deck Viewer was written with AI assistance (qwen3-coder:480b, and my local qwen3-coder30b) following general Dev standards and hygeine while also protecting integrity of the plugin with simple A\B testing and versioning. You can view the git commits and merge history to verify this information. 
-
-Everything was tested then started again with new context from scratch if there was any hallucination or AI rabbit holes. This approach has maintained plugin functionality while minimizing bloat however I will concede there is still plenty of optimization to be had which will be addressed at a later date.
+Deck Viewer was written with AI assistance (qwen3-coder:480b, and my local qwen3-coder30b) following general Dev standards and hygeine while also protecting integrity of the plugin with simple A\B testing and versioning.
 
 ---
 ## Improvements
@@ -25,7 +21,7 @@ Everything was tested then started again with new context from scratch if there 
 - Supports SFW Plugin
 - Default Image Viewer Hijacking
 - Infinite Scroll 
-	- For as long as you have content. It will scroll as long as content exists, it however does not loop around as this caused way too many issues for me to give a damn to fully implement it
+	- For as long as you have content. It will scroll as long as content exists, it however does not loop around.
 ---
 ### Performance
 
@@ -34,15 +30,14 @@ Everything was tested then started again with new context from scratch if there 
 	- Images are locked to 50 on load for performance. Once you are nearing the end of a chunk, the next chunk is loaded. You also have the option to preload multiple chunks ahead by pressing the load next chunk feature.
 	- Chunk system has a safety check to prevent backend query spam and will skip if a chunk load is in progress
 	- Can manually load the next chunk via button
-- Removed particles and nonsense effects and buttons such as strobe.
+- Removed particles and effects and buttons such as strobe.
 - Further reduced code stack (needs further improvement)
 - Backend GraphQL is properly using stash schema rather than guessing
 ---
 ### QOL Improvements
 
 - Respects filter context 
-	- Note: For the most part, it will not work if you have an exclusion in front of your inclusion meaning the INCLUDE must come before the EXCLUDE or no exclude at all for it to properly function. If an include is after another include, it should work. **If someone out there smarter than me can fix this please help.**
-	- Respects ASC\DESC Sort
+	- Note: For the most part, it will not work if you have an exclusion in front of your inclusion meaning the INCLUDE must come before the EXCLUDE or no exclude at all for it to properly function. If an include is after another include, it should work.
 - Split up the image-deck.js into a more manageable format
 	- button.js
 	- config.js
@@ -70,8 +65,8 @@ Everything was tested then started again with new context from scratch if there 
 - General formatting
 - Fixed card positioning and centering\sync issues
 - Corrected filter logic for ASC and DESC, now displays sort correctly
-- Removed card looping, caused too many issues
-- Removed cards from behind main card, distracting, added no value, buggy
+- Removed card looping
+- Removed cards from behind main card
 - Removed additional code bloat such as strobe, particles, other nonsense effects
 - Major performance enhancements regarding logic and effect usage
 - All galleries follow same logic
@@ -80,12 +75,12 @@ Everything was tested then started again with new context from scratch if there 
 - Image and gallery counter fixed and showing correct values
 - No more ghost slides and images
 - Fixed Album 'State' context
-- Improved time click to launch for image galleries in the millions  (With 3.3mil images it loads in the milliseconds )
+- Improved click to launch time for image galleries in the millions  (With 3.3mil images it loads in the milliseconds )
 - Nav buttons all function correctly
 - Improved all gesture performance response
 - removed swipe down to close on fullscreen
 - increased threshold for close and accidental swipe gestures
-- 'i' or metadata button now displays correctly on both mobile and desktop it is responsive in galleries but currently none functional at the moment in that mode
+- 'i' or metadata button now displays correctly on both mobile and desktop it is responsive in galleries but currently none functional at the moment.
 ---
 
 ## Known issues
