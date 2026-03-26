@@ -6,9 +6,6 @@ on:
       - main
     paths:
       - 'plugins/Deck Viewer/**'
-    paths-ignore:
-      - 'plugins/Deck Viewer.zip'
-      - 'plugins/manifest.yml'
 
 permissions:
   contents: write
