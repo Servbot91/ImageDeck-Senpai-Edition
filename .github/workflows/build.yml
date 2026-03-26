@@ -1,8 +1,5 @@
 name: Build Zip and Update Metadata
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 on:
   push:
     branches:
@@ -16,11 +13,10 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    if: github.actor != 'github-actions[bot]'
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -31,22 +27,23 @@ jobs:
         id: commit
         run: |
           SHORT_SHA=$(git rev-parse --short HEAD)
+          # Get commit timestamp in seconds
           COMMIT_TS=$(git log -1 --pretty=format:'%ct')
+          # Format as YYYY-MM-DD HH:MM:SS
           COMMIT_DATE=$(date -d @$COMMIT_TS +"%Y-%m-%d %H:%M:%S")
-
           echo "sha=$SHORT_SHA" >> $GITHUB_OUTPUT
           echo "date=$COMMIT_DATE" >> $GITHUB_OUTPUT
 
       # ---------------------------------
-      # Build zip
+      # Build zip directly into plugins/
       # ---------------------------------
-      - name: Build Deck Viewer.zip
+      - name: Build "Deck Viewer.zip"
         run: |
           cd plugins
           zip -r "Deck Viewer.zip" "Deck Viewer"
 
       # ---------------------------------
-      # Calculate SHA256
+      # Calculate SHA256 of committed zip
       # ---------------------------------
       - name: Calculate SHA256
         id: hash
@@ -61,9 +58,9 @@ jobs:
         run: |
           FILE="plugins/manifest.yml"
 
-          sed -i "s|^version:.*|version: 1.0-${{ steps.commit.outputs.sha }}|" "$FILE"
-          sed -i "s|^date:.*|date: ${{ steps.commit.outputs.date }}|" "$FILE"
-          sed -i "s|^sha256:.*|sha256: ${{ steps.hash.outputs.sha256 }}|" "$FILE"
+          sed -i "s|version:.*|version: 1.0${{ steps.commit.outputs.sha }}|" $FILE
+          sed -i "s|date:.*|date: ${{ steps.commit.outputs.date }}|" $FILE
+          sed -i "s|sha256:.*|sha256: ${{ steps.hash.outputs.sha256 }}|" $FILE
 
       # ---------------------------------
       # Commit changes
@@ -74,12 +71,11 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           git add "plugins/Deck Viewer.zip"
-          git add "plugins/manifest.yml"
+          git add plugins/manifest.yml
 
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
-            git pull --rebase
             git commit -m "Auto-build zip and update metadata (1.0-${{ steps.commit.outputs.sha }})"
             git push
           fi
