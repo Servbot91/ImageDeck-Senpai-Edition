@@ -1,7 +1,7 @@
 - id: deck-viewer
   name: Deck Viewer
   metadata:
-    description: An optimized single-hand gallery and image viewer for stash.
+    description: An optimized single-hand gallery and image viewer for stash that replaces the default image viewer.
   version: 1.0B
   date: 2026-03-25 21:36:53
   path: https://pathtolink
