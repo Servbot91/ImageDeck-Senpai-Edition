@@ -26,9 +26,22 @@ export async function getPluginConfig() {
         if (!settings.preloadImages || settings.preloadImages === 0) settings.preloadImages = isMobile ? 1 : 1;
         if (!settings.swipeResistance || settings.swipeResistance === 0) settings.swipeResistance = 80;
         if (!settings.effectDepth || settings.effectDepth === 0) settings.effectDepth = 150;
-		if (settings.chunkSize === undefined) settings.chunkSize = 30; // Smaller chunks for better responsiveness
-		if (settings.lazyLoadThreshold === undefined) settings.lazyLoadThreshold = 2; // Load 2 slides ahead/behind
-		
+        if (settings.chunkSize === undefined) settings.chunkSize = 30; // Smaller chunks for better responsiveness
+        if (settings.lazyLoadThreshold === undefined) settings.lazyLoadThreshold = 2; // Load 2 slides ahead/behind
+        
+        // Mobile-specific optimizations
+        if (isMobile) {
+            settings.autoPlayInterval = Math.max(settings.autoPlayInterval, 1000); // Minimum 1 second
+            settings.preloadImages = 1; // Force minimal preloading
+            settings.chunkSize = 20; // Smaller chunks for mobile
+            settings.lazyLoadThreshold = 1; // Load fewer slides ahead/behind
+            
+            // Reduce visual effects on mobile to save battery
+            settings.imageGlowIntensity = Math.min(settings.imageGlowIntensity, 20);
+            settings.edgeGlowIntensity = Math.min(settings.edgeGlowIntensity, 30);
+            settings.ambientPulseSpeed = Math.max(settings.ambientPulseSpeed, 10); // Slower animations
+        }
+        
         // Visual effects defaults (flashier!)
         if (!settings.ambientColorHue || settings.ambientColorHue === 0) settings.ambientColorHue = 260;
         if (!settings.imageGlowIntensity || settings.imageGlowIntensity === 0) settings.imageGlowIntensity = 40;
@@ -226,6 +239,22 @@ export function injectDynamicStyles(settings) {
                 width: 35px;
                 height: 35px;
                 font-size: 14px;
+            }
+            
+            /* Mobile performance mode */
+            .image-deck-container.mobile-performance-mode {
+                filter: none !important;
+                box-shadow: none !important;
+                backdrop-filter: none !important;
+            }
+            
+            .image-deck-container.mobile-performance-mode .swiper-slide img {
+                filter: none !important;
+                will-change: auto;
+            }
+            
+            .image-deck-ambient {
+                animation: none !important;
             }
         }
         

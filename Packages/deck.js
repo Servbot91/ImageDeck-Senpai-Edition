@@ -19,6 +19,57 @@ let totalImageCount = 0;
 let totalPages = 0;
 let storedContextInfo = null;
 
+// Performance monitoring for mobile
+let performanceMonitor = null;
+let frameDropCount = 0;
+
+function startPerformanceMonitoring() {
+    if (!isMobile) return; // Only monitor on mobile
+    
+    let lastTime = performance.now();
+    const fpsThreshold = 30; // Target minimum FPS
+    
+    performanceMonitor = setInterval(() => {
+        const currentTime = performance.now();
+        const deltaTime = currentTime - lastTime;
+        const fps = 1000 / deltaTime;
+        
+        if (fps < fpsThreshold) {
+            frameDropCount++;
+            // If we're consistently dropping frames, reduce effects
+            if (frameDropCount > 5) {
+                reduceVisualEffects();
+                frameDropCount = 0;
+            }
+        } else {
+            frameDropCount = Math.max(0, frameDropCount - 0.1);
+        }
+        
+        lastTime = currentTime;
+    }, 1000);
+}
+
+function reduceVisualEffects() {
+    // Dynamically reduce visual effects when performance drops
+    const styles = document.getElementById('image-deck-dynamic-styles');
+    if (styles) {
+        styles.textContent += `
+            .swiper-slide img {
+                filter: none !important; /* Remove glow effects */
+            }
+            .image-deck-ambient {
+                display: none !important; /* Hide ambient background */
+            }
+        `;
+    }
+}
+
+function stopPerformanceMonitoring() {
+    if (performanceMonitor) {
+        clearInterval(performanceMonitor);
+        performanceMonitor = null;
+    }
+}
 
 export async function openDeck(targetImageId = null) {
     console.log('[Image Deck] Opening deck...', targetImageId);
@@ -78,6 +129,19 @@ export async function openDeck(targetImageId = null) {
                     detectedContext.filter.sortDir = params.get('sortdir');
                 }
             }
+        }
+
+        // NEW: Default to galleries when no context is detected
+        if (!detectedContext) {
+            console.log('[Image Deck] No context detected, defaulting to galleries');
+            detectedContext = {
+                type: 'galleries',
+                isGalleryListing: true,
+                filter: {
+                    sortBy: 'created_at',
+                    sortDir: 'desc'
+                }
+            };
         }
 
         // If we are on a gallery listing page, ensure detectContext 
@@ -212,6 +276,9 @@ export async function openDeck(targetImageId = null) {
             module.setupEventHandlers(container);
         });
         
+        // Start performance monitoring on mobile
+        startPerformanceMonitoring();
+        
     } catch (error) {
         console.error('[Image Deck] Error opening deck:', error);
         alert('Error opening Image Deck: ' + error.message);
@@ -226,6 +293,11 @@ function createDeckUI() {
 
     const container = document.createElement('div');
     container.className = `image-deck-container${isMobile ? ' mobile-optimized' : ''}`;
+    // Add performance mode class for mobile
+    if (isMobile) {
+        container.classList.add('mobile-performance-mode');
+    }
+    
     container.innerHTML = `
         <div class="image-deck-ambient"></div>
         <div class="image-deck-topbar">
@@ -420,7 +492,7 @@ export async function loadNextChunk(container = null) {
         const loadingIndicator = document.querySelector('.image-deck-loading');
         if (loadingIndicator) {
             loadingIndicator.textContent = 'All items loaded';
-            setTimeout(() => { loadingIndicator.style.display = 'none'; }, 2000);
+            setTimeout(() => { if (loadingIndicator) loadingIndicator.style.display = 'none'; }, 2000);
         }
         return;
     }
@@ -548,6 +620,7 @@ export async function loadNextChunk(container = null) {
 // Close the deck
 export function closeDeck() {
     stopAutoPlay();
+    stopPerformanceMonitoring(); // Stop performance monitoring
 
     // Clean up event handlers before destroying the deck
     import('./controls.js').then(module => {

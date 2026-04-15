@@ -1,54 +1,33 @@
-
 import { detectContext, fetchContextImages, getVisibleImages, getVisibleGalleryCovers } from './context.js';
 
 let retryTimer = null;
 
-// 1. Update the Observer to use the retry logic instead of the direct call
+// Optimized Observer with debouncing
 const observer = new MutationObserver(() => {
-    // Check if we are even on an allowed path first to avoid unnecessary timers
-    const path = window.location.pathname;
-    if (path.startsWith('/galleries') || path.startsWith('/images') || path.match(/^\/performers\/\d+/)) {
-        // Only trigger retry if the button isn't already there
-        if (!document.getElementById("image-deck-nav-btn")) {
-            retryCreateButton();
-        }
-    } else {
-        // If we navigated away, clean up immediately
-        cleanupButton();
+    if (observer.debounceTimer) {
+        clearTimeout(observer.debounceTimer);
     }
+    
+    observer.debounceTimer = setTimeout(() => {
+        // ALWAYS create button - no conditions
+        if (!document.getElementById("image-deck-nav-btn")) {
+            createLaunchButton();
+        }
+    }, 100);
 });
 
-// 2. Start the observer
+// Start the observer
 observer.observe(document.body, { childList: true, subtree: true });
 
 export function createLaunchButton() {
     const buttonId = "image-deck-nav-btn";
     const existing = document.getElementById(buttonId);
-    
-    const path = window.location.pathname;
-    const isAllowedPath = path.startsWith('/galleries') || path.startsWith('/images') || path.match(/^\/performers\/\d+/);
 
-    if (!isAllowedPath) {
-        cleanupButton();
-        return;
-    }
-
-    // Double check that we actually have images before drawing
-    const context = detectContext();
-    const hasImages = document.querySelectorAll('img[src*="/image/"]').length > 0;
-    const hasGalleryCovers = document.querySelectorAll('.gallery-cover img, .gallery-card img').length > 0;
+    // Remove ALL context checking logic - always create button
+    // Just check if it already exists
     
-    // For performer pages, we don't need to check for existing images since we'll fetch them
-    const isPerformerPage = path.match(/^\/performers\/\d+/);
-    
-    if (!context && !hasImages && !hasGalleryCovers && !isPerformerPage) {
-        // Don't remove here if we are in the middle of a retry loop
-        return; 
-    }
-
     if (existing) return;
 
-    // Rest of the button creation code remains the same...
     const buttonContainer = document.createElement("div");
     buttonContainer.className = "col-4 col-sm-3 col-md-2 col-lg-auto nav-link";
     
@@ -83,29 +62,12 @@ export function createLaunchButton() {
 }
 
 export function cleanupButton() {
-    const existing = document.getElementById("image-deck-nav-btn");
-    if (existing) existing.closest(".nav-link")?.remove();
+    // Don't cleanup the button - keep it always present
+    // const existing = document.getElementById("image-deck-nav-btn");
+    // if (existing) existing.closest(".nav-link")?.remove();
 }
 
 export function retryCreateButton(attempts = 0, maxAttempts = 5) {
-    const path = window.location.pathname;
-    const isAllowed = path.startsWith('/galleries') || path.startsWith('/images') || path.match(/^\/performers\/\d+/);
-    
-    if (!isAllowed) {
-        cleanupButton();
-        return;
-    }
-
-    const hasContext = detectContext() || 
-                       document.querySelectorAll('img[src*="/image/"]').length > 0 || 
-                       document.querySelectorAll('.gallery-cover img, .gallery-card img').length > 0 ||
-                       path.match(/^\/performers\/\d+/); // Allow performer pages even without visible images
-
-    if (hasContext) {
-        createLaunchButton();
-    } else if (attempts < maxAttempts - 1) {
-        clearTimeout(retryTimer);
-        const delays = [100, 300, 500, 1000, 2000];
-        retryTimer = setTimeout(() => retryCreateButton(attempts + 1, maxAttempts), delays[attempts]);
-    }
+    // Simplified - just call createLaunchButton directly
+    createLaunchButton();
 }

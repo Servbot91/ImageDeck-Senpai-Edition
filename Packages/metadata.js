@@ -12,7 +12,7 @@ export async function openMetadataModal() {
     if (!currentSwiperRef) return;
 
     const currentIndex = currentSwiperRef.activeIndex;
-    const currentImage = window.currentImages[currentIndex]; // You'll need to make currentImages accessible
+    const currentImage = window.currentImages[currentIndex];
 
     if (!currentImage || !currentImage.id) return;
 

@@ -1,4 +1,3 @@
-// Add this to the detectContext function around line 40, after the /images page handling
 export function detectContext() {
     const path = window.location.pathname;
     const hash = window.location.hash;
@@ -100,7 +99,7 @@ export function detectContext() {
         return {
             type: 'images',
             isGeneralListing: true,
-            filter: parseUrlFilters(search), // Still try to grab any sort/direction params
+            filter: parseUrlFilters(search),
             hash: hash
         };
     }
@@ -220,7 +219,7 @@ export function getVisibleGalleryCovers() {
                 paths: {
                     image: coverImg.src
                 },
-                url: url // Add the gallery URL
+                url: url 
             });
         }
     });
@@ -277,7 +276,7 @@ export async function fetchContextImages(context, page = 1, perPage = 50) {
         if (isFetchingGalleries) {
             // Gallery-specific allowed fields
             const galleryAllowedFields = [
-                'tags', 'performers', 'studios', 'markers', 'path', 
+                'tags', 'performers', 'studios', 'markers', 
                 'rating100', 'organized', 'is_missing', 'image_count',
                 'date', 'url', 'photographer', 'code'
             ];
@@ -385,14 +384,13 @@ export async function fetchContextImages(context, page = 1, perPage = 50) {
                                     excludedIds.includes(fieldItem.id)
                                 );
                                 
-                                // If we find any excluded item, exclude this gallery
                                 if (hasExcludedItem) {
                                     return false;
                                 }
                             }
                         }
                     }
-                    return true; // Include if no exclusions apply
+                    return true; 
                 });
                 
                 // Update count after filtering
@@ -403,7 +401,7 @@ export async function fetchContextImages(context, page = 1, perPage = 50) {
 				id: gallery.id,
 				title: gallery.title,
 				image_count: gallery.image_count,
-				performers: gallery.performers || [], // Add this line
+				performers: gallery.performers || [], 
 				isGallery: true,
 				type: 'gallery',
 				paths: { image: gallery.cover?.paths?.image || gallery.cover?.paths?.thumbnail || '' },
@@ -426,14 +424,13 @@ export async function fetchContextImages(context, page = 1, perPage = 50) {
                                     excludedIds.includes(fieldItem.id)
                                 );
                                 
-                                // If we find any excluded item, exclude this image
-                                if (hasExcludedItem) {
+								if (hasExcludedItem) {
                                     return false;
                                 }
                             }
                         }
                     }
-                    return true; // Include if no exclusions apply
+                    return true; 
                 });
                 
                 // Update count after filtering

@@ -1,6 +1,6 @@
-// ui/controls.js
 import { closeDeck, startAutoPlay, stopAutoPlay, loadNextChunk } from './deck.js';
 import { openMetadataModal, closeMetadataModal } from './metadata.js';
+import { isMobile } from './utils.js';
 
 let isDeckActive = false;
 let keyboardHandler = null;
@@ -25,11 +25,11 @@ function toggleFullscreen() {
     }
 }
 
-// Add this helper function to update UI based on fullscreen state
+
 function updateFullscreenUI(isFullscreen) {
     const fullscreenBtn = document.querySelector('.image-deck-fullscreen');
     if (fullscreenBtn) {
-        fullscreenBtn.textContent = isFullscreen ? '⛶' : '⛶'; // You could change the icon if desired
+        fullscreenBtn.textContent = isFullscreen ? '⛶' : '⛶'; //
     }
     
     // Add/remove a class to the container for styling purposes
@@ -278,7 +278,7 @@ function setupSwipeGestures(container) {
     }, { passive: true });
 }
 
-// Add this helper function for double tap zoom handling
+// Double tap zoom handling
 function handleDoubleTapZoom(event, container) {
     const swiper = window.currentSwiperInstance;
     if (!swiper || !swiper.zoom) return;
