@@ -3,8 +3,7 @@ import { detectContext, fetchContextImages, getVisibleImages, getVisibleGalleryC
 import { setCurrentSwiper } from './metadata.js';
 import { initSwiper } from './swiper.js';
 import { isMobile } from './utils.js';
-
-const GALLERY_ICON_SVG = '<svg fill="white" width="16" height="16" viewBox="0 0 36 36" style="vertical-align: middle;" xmlns="http://www.w3.org/2000/svg"><path d="M32,4H4A2,2,0,0,0,2,6V30a2,2,0,0,0,2,2H32a2,2,0,0,0,2-2V6A2,2,0,0,0,32,4ZM4,30V6H32V30Z"></path><path d="M8.92,14a3,3,0,1,0-3-3A3,3,0,0,0,8.92,14Zm0-4.6A1.6,1.6,0,1,1,7.33,11,1.6,1.6,0,0,1,8.92,9.41Z"></path><path d="M22.78,15.37l-5.4,5.4-4-4a1,1,0,0,0-1.41,0L5.92,22.9v2.83l6.79-6.79L16,22.18l-3.75,3.75H15l8.45-8.45L30,24V21.18l-5.81-5.81A1,1,0,0,0,22.78,15.37Z"></path></svg>';
+import { GALLERY_ICON_SVG } from './constants.js';
 
 let pluginConfig = null;
 let currentSwiper = null;
@@ -150,7 +149,7 @@ export async function openDeck(targetImageId = null) {
             detectedContext = {
                 type: 'galleries',
                 isGalleryListing: true,
-                filter: parseUrlFilters(window.location.search) // This is the crucial part
+                filter: parseUrlFilters(window.location.search) 
             };
         }
 
@@ -161,15 +160,13 @@ export async function openDeck(targetImageId = null) {
         // 2. Determine what content to show
         let imageResult;
 
-        // CRITICAL FIX: When we have a targetImageId, we should use visible images 
-        // to maintain the current view context
         const isListContext = contextInfo && (
             contextInfo.isSingleGallery || 
             contextInfo.isGalleryListing || 
             contextInfo.type === 'images' || 
             contextInfo.isFilteredView ||
-            contextInfo.isPerformerContext || // Add performer context
-            window.location.pathname.startsWith('/images') // Added this
+            contextInfo.isPerformerContext || 
+            window.location.pathname.startsWith('/images') 
         );
 
         // If we have a target image ID, prefer visible images to maintain context
@@ -186,13 +183,13 @@ export async function openDeck(targetImageId = null) {
         
         // 3. Handle data results
         if (Array.isArray(imageResult)) {
-            // This path is for getVisibleImages() (the 20 items on screen)
+
             currentImages = imageResult;
             totalImageCount = imageResult.length;
             totalPages = 1;
             currentChunkPage = 1;
         } else if (imageResult) {
-            // This path is for fetchContextImages() (Full database results)
+
             currentImages = imageResult.images || [];
             totalImageCount = imageResult.totalCount || 0;
             totalPages = imageResult.totalPages || 1;
@@ -210,7 +207,6 @@ export async function openDeck(targetImageId = null) {
         });
 
         // 5. Initialize Swiper 
-        // We pass checkAndLoadNextChunk into the update callback so it checks on every slide change
         currentSwiper = initSwiper(
             container, 
             currentImages, 
@@ -227,7 +223,6 @@ export async function openDeck(targetImageId = null) {
         window.currentImages = currentImages;
         setCurrentSwiper(currentSwiper);
         
-        // Add zoom event listeners for UI fading
         if (currentSwiper) {
             currentSwiper.on('zoomChange', (swiper, scale) => {
                 const topBar = container.querySelector('.image-deck-topbar');
@@ -287,7 +282,6 @@ export async function openDeck(targetImageId = null) {
 
 // Create the image deck UI
 function createDeckUI() {
-    // Remove any existing deck
     const existing = document.querySelector('.image-deck-container');
     if (existing) existing.remove();
 
@@ -617,12 +611,10 @@ export async function loadNextChunk(container = null) {
     }
 }
 
-// Close the deck
 export function closeDeck() {
     stopAutoPlay();
-    stopPerformanceMonitoring(); // Stop performance monitoring
+    stopPerformanceMonitoring(); 
 
-    // Clean up event handlers before destroying the deck
     import('./controls.js').then(module => {
         module.cleanupEventHandlers();
     });
@@ -645,7 +637,6 @@ export function closeDeck() {
     contextInfo = null;
     loadingQueue = [];
     
-    // Clear any remaining intervals
     if (autoPlayInterval) {
         clearInterval(autoPlayInterval);
         autoPlayInterval = null;

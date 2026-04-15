@@ -35,3 +35,35 @@ export function getImageCache() {
 export function clearImageCache() {
     imageCache.clear();
 }
+
+export function memoize(fn, ttl = 300000) { // 5 minutes default
+    const cache = new Map();
+    
+    return function(...args) {
+        const key = JSON.stringify(args);
+        const now = Date.now();
+        
+        if (cache.has(key)) {
+            const { value, timestamp } = cache.get(key);
+            if (now - timestamp < ttl) {
+                return value;
+            }
+        }
+        
+        const result = fn.apply(this, args);
+        cache.set(key, { value: result, timestamp: now });
+        return result;
+    };
+}
+
+// Example usage for expensive operations:
+export const getSlideTemplate = memoize((img, contextInfo, isEager = false) => {
+    // Your existing getSlideTemplate logic here
+    // This will cache results for identical inputs
+}, 600000); // 10 minutes cache
+
+// For GraphQL operations:
+export const fetchImageMetadata = memoize(async (imageId) => {
+    // Your existing fetch logic
+    // Will cache results for 5 minutes by default
+}, 300000);
