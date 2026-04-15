@@ -23,7 +23,7 @@ export async function getPluginConfig() {
         if (!settings.transitionEffect || settings.transitionEffect === '') settings.transitionEffect = 'cards';
         if (settings.showProgressBar === undefined) settings.showProgressBar = true;
         if (settings.showCounter === undefined) settings.showCounter = true;
-        if (!settings.preloadImages || settings.preloadImages === 0) settings.preloadImages = isMobile ? 1 : 1;
+		if (!settings.preloadImages || settings.preloadImages === 0) settings.preloadImages = isMobile ? 1 : 2;
         if (!settings.swipeResistance || settings.swipeResistance === 0) settings.swipeResistance = 80;
         if (!settings.effectDepth || settings.effectDepth === 0) settings.effectDepth = 150;
         if (settings.chunkSize === undefined) settings.chunkSize = 30; // Smaller chunks for better responsiveness

@@ -219,82 +219,92 @@ function setupSwipeGestures(container, eventManager) {
     let lastTouchTime = 0;
     let lastTouchX = 0;
     let lastTouchY = 0;
+    let isProcessingTouch = false;
     
     const swiperEl = container.querySelector('.image-deck-swiper');
     if (!swiperEl) return;
 
-    eventManager.add(swiperEl, 'touchstart', (e) => {
-        if (e.touches.length > 1) return;
-        
-        if (e.target.closest('.image-deck-metadata-modal')) return;
-        
-        const currentTime = new Date().getTime();
-        const touchX = e.touches[0].clientX;
-        const touchY = e.touches[0].clientY;
-        
-        if (currentTime - lastTouchTime < 300 && 
-            Math.abs(touchX - lastTouchX) < 20 && 
-            Math.abs(touchY - lastTouchY) < 20) {
+    // Single consolidated touch handler
+    const touchHandler = {
+        handleTouchStart: (e) => {
+            if (isProcessingTouch || e.touches.length > 1) return;
             
-            handleDoubleTapZoom(e, container);
-            e.preventDefault();
-            return;
-        }
-        
-        lastTouchTime = currentTime;
-        lastTouchX = touchX;
-        lastTouchY = touchY;
-        
-        touchStartY = e.touches[0].clientY;
-        touchStartX = e.touches[0].clientX;
-        touchDeltaY = 0;
-        touchDeltaX = 0;
-    }, { passive: false });
+            if (e.target.closest('.image-deck-metadata-modal')) return;
+            
+            const currentTime = new Date().getTime();
+            const touchX = e.touches[0].clientX;
+            const touchY = e.touches[0].clientY;
+            
+            // Handle double tap for zoom
+            if (currentTime - lastTouchTime < 300 && 
+                Math.abs(touchX - lastTouchX) < 20 && 
+                Math.abs(touchY - lastTouchY) < 20) {
+                
+                handleDoubleTapZoom(e, container);
+                e.preventDefault();
+                isProcessingTouch = true;
+                return;
+            }
+            
+            lastTouchTime = currentTime;
+            lastTouchX = touchX;
+            lastTouchY = touchY;
+            
+            touchStartY = touchY;
+            touchStartX = touchX;
+            touchDeltaY = 0;
+            touchDeltaX = 0;
+            isProcessingTouch = false;
+        },
 
-    eventManager.add(swiperEl, 'touchmove', (e) => {
-        if (e.touches.length > 1) {
-            if (rafId) cancelAnimationFrame(rafId);
-            container.style.transform = '';
-            container.style.opacity = '';
-            return;
-        }
-        
-        if (e.target.closest('.image-deck-metadata-modal')) return;
-        
-        const currentY = e.touches[0].clientY;
-        const currentX = e.touches[0].clientX;
-        
-        touchDeltaY = currentY - touchStartY;
-        touchDeltaX = Math.abs(currentX - touchStartX);
-        
-        const isInFullscreen = !!document.fullscreenElement;
-        
-        if (!isInFullscreen && touchDeltaY > 30 && touchDeltaX < 50) {
-            if (rafId) cancelAnimationFrame(rafId);
-            rafId = requestAnimationFrame(() => {
-                container.style.transform = `translateY(${touchDeltaY * 0.3}px)`;
-                container.style.opacity = Math.max(0.3, 1 - (touchDeltaY / 500));
-            });
-        }
-    }, { passive: true });
+        handleTouchMove: (e) => {
+            if (isProcessingTouch || e.touches.length > 1) return;
+            
+            if (e.target.closest('.image-deck-metadata-modal')) return;
+            
+            const currentY = e.touches[0].clientY;
+            const currentX = e.touches[0].clientX;
+            
+            touchDeltaY = currentY - touchStartY;
+            touchDeltaX = Math.abs(currentX - touchStartX);
+            
+            const isInFullscreen = !!document.fullscreenElement;
+            
+            // Only apply vertical swipe gesture outside of swiper zoom container
+            if (!isInFullscreen && touchDeltaY > 30 && touchDeltaX < 50) {
+                if (rafId) cancelAnimationFrame(rafId);
+                rafId = requestAnimationFrame(() => {
+                    container.style.transform = `translateY(${touchDeltaY * 0.3}px)`;
+                    container.style.opacity = Math.max(0.3, 1 - (touchDeltaY / 500));
+                });
+                isProcessingTouch = true;
+            }
+        },
 
-    eventManager.add(swiperEl, 'touchend', (e) => {
-        if (rafId) cancelAnimationFrame(rafId);
-        
-        const isInFullscreen = !!document.fullscreenElement;
-        
-        if (!isInFullscreen && touchDeltaY > 150 && touchDeltaX < 50) {
-            closeDeck();
-        } else {
-            requestAnimationFrame(() => {
-                container.style.transform = '';
-                container.style.opacity = '';
-            });
+        handleTouchEnd: (e) => {
+            if (rafId) cancelAnimationFrame(rafId);
+            
+            const isInFullscreen = !!document.fullscreenElement;
+            
+            if (!isInFullscreen && touchDeltaY > 150 && touchDeltaX < 50) {
+                closeDeck();
+            } else {
+                requestAnimationFrame(() => {
+                    container.style.transform = '';
+                    container.style.opacity = '';
+                });
+            }
+            
+            touchDeltaY = 0;
+            touchDeltaX = 0;
+            isProcessingTouch = false;
         }
-        
-        touchDeltaY = 0;
-        touchDeltaX = 0;
-    }, { passive: true });
+    };
+
+    // Attach single event listeners
+    eventManager.add(swiperEl, 'touchstart', touchHandler.handleTouchStart, { passive: false });
+    eventManager.add(swiperEl, 'touchmove', touchHandler.handleTouchMove, { passive: true });
+    eventManager.add(swiperEl, 'touchend', touchHandler.handleTouchEnd, { passive: true });
 }
 
 // Double tap zoom handling

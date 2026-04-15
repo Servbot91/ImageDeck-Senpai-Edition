@@ -6,19 +6,24 @@ export const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Oper
 // Create imageCache in utils.js scope
 const imageCache = new Map();
 
-// Optimized image preloader
 export function preloadImage(src, priority = false) {
-    if (imageCache.has(src)) {
+
+    const shouldCache = priority || imageCache.size < 20; 
+    
+    if (shouldCache && imageCache.has(src)) {
         return Promise.resolve(imageCache.get(src));
     }
 
     return new Promise((resolve, reject) => {
         const img = new Image();
         img.decoding = 'async';
-        img.loading = priority ? 'eager' : 'lazy';
+        
+        img.loading = priority ? 'eager' : (isMobile ? 'lazy' : 'lazy');
 
         img.onload = () => {
-            imageCache.set(src, img);
+            if (shouldCache) {
+                imageCache.set(src, img);
+            }
             resolve(img);
         };
         img.onerror = reject;

@@ -5,6 +5,7 @@ import { initSwiper } from './swiper.js';
 import { isMobile } from './utils.js';
 import { GALLERY_ICON_SVG } from './constants.js';
 
+let chunkLoadTimeout = null;
 let pluginConfig = null;
 let currentSwiper = null;
 let currentImages = [];
@@ -474,141 +475,149 @@ function restorePosition() {
 let isChunkLoading = false; 
 
 export async function loadNextChunk(container = null) {
-    // 1. Guard: Prevent multiple simultaneous loads
-    if (isChunkLoading) {
-        console.log('[Image Deck] Load already in progress, skipping...');
-        return;
+    // Clear any pending timeouts to prevent race conditions
+    if (chunkLoadTimeout) {
+        clearTimeout(chunkLoadTimeout);
     }
-
-    // 2. Guard: Check if we've reached the end
-    if (currentChunkPage >= totalPages && totalPages !== 0) {
-        console.log('[Image Deck] All chunks already loaded.');
-        const loadingIndicator = document.querySelector('.image-deck-loading');
-        if (loadingIndicator) {
-            loadingIndicator.textContent = 'All items loaded';
-            setTimeout(() => { if (loadingIndicator) loadingIndicator.style.display = 'none'; }, 2000);
-        }
-        return;
-    }
-
-    isChunkLoading = true;
-
-    // UI Feedback
-    const loadingIndicator = document.querySelector('.image-deck-loading');
-    const nextChunkButton = document.querySelector('[data-action="next-chunk"]');
     
-    if (nextChunkButton) {
-        nextChunkButton.disabled = true;
-        nextChunkButton.style.opacity = '0.5';
-		nextChunkButton.innerHTML = '🔄';
-    }
-
-    if (loadingIndicator) {
-        loadingIndicator.style.display = 'block';
-        loadingIndicator.textContent = `Loading chunk ${currentChunkPage + 1}...`;
-    }
-
-    try {
-        const contextToUse = storedContextInfo || contextInfo || detectContext();
-        if (!contextToUse) throw new Error('Could not detect context for fetching');
-
-        const nextPage = currentChunkPage + 1;
-        const result = await fetchContextImages(contextToUse, nextPage, chunkSize);
-        
-        if (!result || !result.images || result.images.length === 0) {
-            if (loadingIndicator) loadingIndicator.textContent = 'No more items found';
-            setTimeout(() => { if (loadingIndicator) loadingIndicator.style.display = 'none'; }, 2000);
+    // Debounce the chunk loading
+    chunkLoadTimeout = setTimeout(async () => {
+        // 1. Guard: Prevent multiple simultaneous loads
+        if (isChunkLoading) {
+            console.log('[Image Deck] Load already in progress, skipping...');
             return;
         }
 
-        // 3. Update Data State
-        currentImages.push(...result.images);
-        currentChunkPage = nextPage;
-        totalPages = result.totalPages || totalPages;
+        // 2. Guard: Check if we've reached the end
+        if (currentChunkPage >= totalPages && totalPages !== 0) {
+            console.log('[Image Deck] All chunks already loaded.');
+            const loadingIndicator = document.querySelector('.image-deck-loading');
+            if (loadingIndicator) {
+                loadingIndicator.textContent = 'All items loaded';
+                setTimeout(() => { if (loadingIndicator) loadingIndicator.style.display = 'none'; }, 2000);
+            }
+            return;
+        }
 
-        // 4. Update UI (Swiper OR Gallery)
-        if (currentSwiper && currentSwiper.virtual) {
-            // Re-generate ALL slides to ensure formatting consistency across the whole deck
-			const allSlides = currentImages.map(img => {
-			const fullSrc = img.paths.image;
-			const isGallery = img.url && !contextInfo?.isSingleGallery;
-			const title = img.title || 'Untitled';
-			const loading = 'lazy'; // Consistent with getSlideTemplate
+        isChunkLoading = true;
 
-			if (isGallery) {
-				// Use the same template structure as getSlideTemplate
-				const imageCountDisplay = img.image_count !== undefined ? 
-					`${GALLERY_ICON_SVG}: ${img.image_count}` : '';
-				
-				let performerDisplay = '';
-				if (img.performers && img.performers.length > 0) {
-					const performerNames = img.performers.map(p => p.name).join(', ');
-					performerDisplay = `<div class="gallery-performers" style="margin-top: 5px; font-size: 18px; color: #ccc;">${performerNames}</div>`;
-				}
+        // UI Feedback
+        const loadingIndicator = document.querySelector('.image-deck-loading');
+        const nextChunkButton = document.querySelector('[data-action="next-chunk"]');
         
-        return `
-            <div class="swiper-zoom-container" data-type="gallery" data-url="${img.url}">
-                <div class="gallery-cover-container">
-                    <div class="gallery-cover-title" title="${title}">${title}</div>
-                    ${imageCountDisplay ? `<div class="gallery-image-count" style="font-size: 18px; color: #ccc; margin-top: 3px;">${imageCountDisplay}</div>` : ''}
-                    <a href="${img.url}" target="_blank" class="gallery-cover-link">
-                        <img src="${fullSrc}" alt="${title}" decoding="async" loading="${loading}" />
-                    </a>
-                    ${performerDisplay}
-                </div>
-            </div>`;
-    }
+        if (nextChunkButton) {
+            nextChunkButton.disabled = true;
+            nextChunkButton.style.opacity = '0.5';
+            nextChunkButton.innerHTML = '🔄';
+        }
 
-		// For regular images, use the same structure as getSlideTemplate
-		return `
-			<div class="swiper-zoom-container" data-type="image">
-				<img src="${fullSrc}" alt="${title}" decoding="async" loading="${loading}" 
-					 style="max-width: 100%; height: auto; display: block; margin: 0 auto;" />
-			</div>`;
-	});
+        if (loadingIndicator) {
+            loadingIndicator.style.display = 'block';
+            loadingIndicator.textContent = `Loading chunk ${currentChunkPage + 1}...`;
+        }
 
-            // Update Swiper Virtual Slides
-            currentSwiper.virtual.slides = allSlides;
-            currentSwiper.virtual.update(true);
+        try {
+            const contextToUse = storedContextInfo || contextInfo || detectContext();
+            if (!contextToUse) throw new Error('Could not detect context for fetching');
+
+            const nextPage = currentChunkPage + 1;
+            const result = await fetchContextImages(contextToUse, nextPage, chunkSize);
             
-            // Small timeout to let DOM settle, then force a layout refresh
-            setTimeout(() => { if (currentSwiper) currentSwiper.update(); }, 100);
+            if (!result || !result.images || result.images.length === 0) {
+                if (loadingIndicator) loadingIndicator.textContent = 'No more items found';
+                setTimeout(() => { if (loadingIndicator) loadingIndicator.style.display = 'none'; }, 2000);
+                return;
+            }
 
-        } else {
-            // Logic for Standard Gallery Grid (if not using Virtual/Swiper)
-            const galleryGrid = document.querySelector('.gallery-grid');
-            if (galleryGrid) {
-                result.images.forEach(img => {
-                    const imgHTML = `<div class="gallery-item"><img src="${img.paths.image}" alt="${img.title || ''}" class="gallery-img" /></div>`;
-                    galleryGrid.insertAdjacentHTML('beforeend', imgHTML);
+            // 3. Update Data State
+            currentImages.push(...result.images);
+            currentChunkPage = nextPage;
+            totalPages = result.totalPages || totalPages;
+
+            // 4. Update UI (Swiper OR Gallery)
+            if (currentSwiper && currentSwiper.virtual) {
+                // Re-generate ALL slides to ensure formatting consistency across the whole deck
+                const allSlides = currentImages.map(img => {
+                    const fullSrc = img.paths.image;
+                    const isGallery = img.url && !contextInfo?.isSingleGallery;
+                    const title = img.title || 'Untitled';
+                    const loading = 'lazy'; // Consistent with getSlideTemplate
+
+                    if (isGallery) {
+                        // Use the same template structure as getSlideTemplate
+                        const imageCountDisplay = img.image_count !== undefined ? 
+                            `${GALLERY_ICON_SVG}: ${img.image_count}` : '';
+                        
+                        let performerDisplay = '';
+                        if (img.performers && img.performers.length > 0) {
+                            const performerNames = img.performers.map(p => p.name).join(', ');
+                            performerDisplay = `<div class="gallery-performers" style="margin-top: 5px; font-size: 18px; color: #ccc;">${performerNames}</div>`;
+                        }
+                
+                        return `
+                            <div class="swiper-zoom-container" data-type="gallery" data-url="${img.url}">
+                                <div class="gallery-cover-container">
+                                    <div class="gallery-cover-title" title="${title}">${title}</div>
+                                    ${imageCountDisplay ? `<div class="gallery-image-count" style="font-size: 18px; color: #ccc; margin-top: 3px;">${imageCountDisplay}</div>` : ''}
+                                    <a href="${img.url}" target="_blank" class="gallery-cover-link">
+                                        <img src="${fullSrc}" alt="${title}" decoding="async" loading="${loading}" />
+                                    </a>
+                                    ${performerDisplay}
+                                </div>
+                            </div>`;
+                    }
+
+                    // For regular images, use the same structure as getSlideTemplate
+                    return `
+                        <div class="swiper-zoom-container" data-type="image">
+                            <img src="${fullSrc}" alt="${title}" decoding="async" loading="${loading}" 
+                                 style="max-width: 100%; height: auto; display: block; margin: 0 auto;" />
+                        </div>`;
                 });
+
+                // Update Swiper Virtual Slides
+                currentSwiper.virtual.slides = allSlides;
+                currentSwiper.virtual.update(true);
+                
+                // Small timeout to let DOM settle, then force a layout refresh
+                setTimeout(() => { if (currentSwiper) currentSwiper.update(); }, 100);
+
+            } else {
+                // Logic for Standard Gallery Grid (if not using Virtual/Swiper)
+                const galleryGrid = document.querySelector('.gallery-grid');
+                if (galleryGrid) {
+                    result.images.forEach(img => {
+                        const imgHTML = `<div class="gallery-item"><img src="${img.paths.image}" alt="${img.title || ''}" class="gallery-img" /></div>`;
+                        galleryGrid.insertAdjacentHTML('beforeend', imgHTML);
+                    });
+                }
+            }
+
+            // 5. General UI Refresh (Context buttons, etc.)
+            const container = document.querySelector('.image-deck-container');
+            if (container && typeof updateUI === 'function') updateUI(container);
+
+            // Success Feedback
+            if (loadingIndicator) {
+                loadingIndicator.textContent = `✓ Loaded ${result.images.length} new items`;
+                setTimeout(() => { loadingIndicator.style.display = 'none'; }, 2000);
+            }
+
+        } catch (error) {
+            console.error('[Image Deck] Failed to load chunk:', error);
+            if (loadingIndicator) {
+                loadingIndicator.textContent = 'Error: ' + error.message;
+                setTimeout(() => { loadingIndicator.style.display = 'none'; }, 3000);
+            }
+        } finally {
+            isChunkLoading = false;
+            if (nextChunkButton) {
+                nextChunkButton.disabled = false;
+                nextChunkButton.style.opacity = '1';
+                nextChunkButton.innerHTML = '⏭️';
             }
         }
-
-        // 5. General UI Refresh (Context buttons, etc.)
-        const container = document.querySelector('.image-deck-container');
-        if (container && typeof updateUI === 'function') updateUI(container);
-
-        // Success Feedback
-        if (loadingIndicator) {
-            loadingIndicator.textContent = `✓ Loaded ${result.images.length} new items`;
-            setTimeout(() => { loadingIndicator.style.display = 'none'; }, 2000);
-        }
-
-    } catch (error) {
-        console.error('[Image Deck] Failed to load chunk:', error);
-        if (loadingIndicator) {
-            loadingIndicator.textContent = 'Error: ' + error.message;
-            setTimeout(() => { loadingIndicator.style.display = 'none'; }, 3000);
-        }
-    } finally {
-        isChunkLoading = false;
-        if (nextChunkButton) {
-            nextChunkButton.disabled = false;
-            nextChunkButton.style.opacity = '1';
-			nextChunkButton.innerHTML = '⏭️';
-        }
-    }
+    }, 100);
 }
 
 export function closeDeck() {

@@ -99,7 +99,7 @@ export function initSwiper(container, images, pluginConfig, updateUICallback, sa
         
         centeredSlidesBounds: true,
         centerInsufficientSlides: true,
-        
+		touchEventsTarget: 'container',
         touchRatio: 1,
         touchAngle: 45,
         simulateTouch: true,
