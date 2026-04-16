@@ -555,7 +555,6 @@ async function getTagNames(tagIds) {
     }
 }
 
-// Update createDeckUI function - make it properly async
 async function createDeckUI() {
     const existing = document.querySelector('.image-deck-container');
     if (existing) existing.remove();
@@ -571,17 +570,27 @@ async function createDeckUI() {
     const currentTags = getCurrentFilterTags();
     let filterDisplay = '';
     
-    if (currentTags.length > 0) {
+    if (currentTags.included.length > 0 || currentTags.excluded.length > 0) {
         // Get tag names
-        const tagNames = await getTagNames(currentTags);
+        const allTagIds = [...currentTags.included, ...currentTags.excluded];
+        const tagNames = await getTagNames(allTagIds);
+        
         filterDisplay = `
             <div class="image-deck-current-filters" style="position: absolute; top: 60px; left: 20px; right: 20px; z-index: 10; display: flex; flex-wrap: wrap; gap: 5px;">
                 <span style="color: #ccc; font-size: 12px; background: rgba(0,0,0,0.5); padding: 2px 8px; border-radius: 10px;">FILTERED BY:</span>
-                ${currentTags.map(tagId => {
+                ${currentTags.included.map(tagId => {
                     const tagName = tagNames[tagId] || `Tag:${tagId}`;
                     return `
-                        <span class="filter-tag-display" data-tag-id="${tagId}" style="color: white; font-size: 12px; background: rgba(102, 126, 234, 0.7); padding: 2px 8px; border-radius: 10px; display: flex; align-items: center;">
-                            ${tagName}
+                        <span class="filter-tag-display" data-tag-id="${tagId}" style="color: white; font-size: 12px; background: rgba(46, 204, 113, 0.7); padding: 2px 8px; border-radius: 10px; display: flex; align-items: center;">
+                            ✅ ${tagName}
+                            <button class="remove-filter-tag" data-tag-id="${tagId}" style="background: none; border: none; color: white; margin-left: 5px; cursor: pointer; font-size: 14px;">×</button>
+                        </span>`;
+                }).join('')}
+                ${currentTags.excluded.map(tagId => {
+                    const tagName = tagNames[tagId] || `Tag:${tagId}`;
+                    return `
+                        <span class="filter-tag-display" data-tag-id="${tagId}" style="color: white; font-size: 12px; background: rgba(231, 76, 60, 0.7); padding: 2px 8px; border-radius: 10px; display: flex; align-items: center;">
+                            ❌ ${tagName}
                             <button class="remove-filter-tag" data-tag-id="${tagId}" style="background: none; border: none; color: white; margin-left: 5px; cursor: pointer; font-size: 14px;">×</button>
                         </span>`;
                 }).join('')}
@@ -631,7 +640,7 @@ async function createDeckUI() {
     `;
 
     // Add event listeners to remove buttons AFTER the HTML is set
-    if (currentTags.length > 0) {
+    if (currentTags.included.length > 0 || currentTags.excluded.length > 0) {
         // We'll add these event listeners after the container is actually in the DOM
         setTimeout(() => {
             const removeButtons = container.querySelectorAll('.remove-filter-tag');
@@ -640,10 +649,17 @@ async function createDeckUI() {
                     e.stopPropagation();
                     const tagId = button.dataset.tagId;
                     const currentTags = getCurrentFilterTags();
-                    const newTags = currentTags.filter(id => id !== tagId);
                     
-                    if (newTags.length > 0) {
-                        sessionStorage.setItem('galleryTagFilter', JSON.stringify(newTags));
+                    // Remove from either included or excluded list
+                    let newIncluded = currentTags.included.filter(id => id !== tagId);
+                    let newExcluded = currentTags.excluded.filter(id => id !== tagId);
+                    
+                    if (newIncluded.length > 0 || newExcluded.length > 0) {
+                        const filterObj = {
+                            included: newIncluded,
+                            excluded: newExcluded
+                        };
+                        sessionStorage.setItem('galleryTagFilter', JSON.stringify(filterObj));
                     } else {
                         sessionStorage.removeItem('galleryTagFilter');
                     }
@@ -657,7 +673,6 @@ async function createDeckUI() {
     return container;
 }
 
-// Update updateFilterDisplayInUI function
 async function updateFilterDisplayInUI() {
     const container = document.querySelector('.image-deck-container');
     if (!container) return;
@@ -679,22 +694,22 @@ async function updateFilterDisplayInUI() {
         
         let filterHtml = '<span style="color: #ccc; font-size: 12px; background: rgba(0,0,0,0.5); padding: 2px 8px; border-radius: 10px;">FILTERED BY:</span>';
         
-        // Add included tags
+        // Add included tags with ✅ prefix and green color
         filterHtml += currentTags.included.map(tagId => {
             const tagName = tagNames[tagId] || `Tag:${tagId}`;
             return `
-                <span class="filter-tag-display" data-tag-id="${tagId}" style="color: white; font-size: 12px; background: rgba(102, 126, 234, 0.7); padding: 2px 8px; border-radius: 10px; display: flex; align-items: center;">
-                    ${tagName}
+                <span class="filter-tag-display" data-tag-id="${tagId}" style="color: white; font-size: 12px; background: rgba(46, 204, 113, 0.7); padding: 2px 8px; border-radius: 10px; display: flex; align-items: center;">
+                    ✅ ${tagName}
                     <button class="remove-filter-tag" data-tag-id="${tagId}" style="background: none; border: none; color: white; margin-left: 5px; cursor: pointer; font-size: 14px;">×</button>
                 </span>`;
         }).join('');
         
-        // Add excluded tags with ❌ prefix
+        // Add excluded tags with ❌ prefix and red color
         filterHtml += currentTags.excluded.map(tagId => {
             const tagName = tagNames[tagId] || `Tag:${tagId}`;
             return `
-                <span class="filter-tag-display" data-tag-id="${tagId}" style="color: white; font-size: 12px; background: rgba(234, 102, 102, 0.7); padding: 2px 8px; border-radius: 10px; display: flex; align-items: center;">
-                    ❌${tagName}
+                <span class="filter-tag-display" data-tag-id="${tagId}" style="color: white; font-size: 12px; background: rgba(231, 76, 60, 0.7); padding: 2px 8px; border-radius: 10px; display: flex; align-items: center;">
+                    ❌ ${tagName}
                     <button class="remove-filter-tag" data-tag-id="${tagId}" style="background: none; border: none; color: white; margin-left: 5px; cursor: pointer; font-size: 14px;">×</button>
                 </span>`;
         }).join('');

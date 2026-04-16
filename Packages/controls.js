@@ -223,16 +223,26 @@ function showGalleryTagFilter() {
     let excludedTags = [];
     
     // Load currently applied tags if any
-    const currentFilter = sessionStorage.getItem('galleryTagFilter');
-    if (currentFilter) {
-        try {
-            const filterObj = JSON.parse(currentFilter);
-            includedTags = filterObj.included || [];
-            excludedTags = filterObj.excluded || [];
-        } catch (e) {
-            console.error('Error parsing current filter:', e);
-        }
-    }
+	const currentFilter = sessionStorage.getItem('galleryTagFilter');
+	if (currentFilter) {
+		try {
+			const filterObj = JSON.parse(currentFilter);
+			includedTags = filterObj.included || [];
+			excludedTags = filterObj.excluded || [];
+			
+			// Update the UI to reflect current selections
+			setTimeout(() => {
+				if (includedSearchInput.value.trim().length >= 2) {
+					includedSearchInput.dispatchEvent(new Event('input'));
+				}
+				if (excludedSearchInput.value.trim().length >= 2) {
+					excludedSearchInput.dispatchEvent(new Event('input'));
+				}
+			}, 100);
+		} catch (e) {
+			console.error('Error parsing current filter:', e);
+		}
+	}
     
     // Included tags search
     includedSearchInput.addEventListener('input', async (e) => {
@@ -681,9 +691,17 @@ export function setDeckActive(active) {
     isDeckActive = active;
 }
 
-// Keyboard handler
 function handleKeyboard(e) {
     if (!isDeckActive) return;
+    
+    // Check if we're in a modal input field
+    const inModalInput = e.target.closest('.gallery-tag-filter-modal') && 
+                        (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA');
+    
+    // Allow spacebar in modal inputs
+    if (inModalInput && e.key === ' ') {
+        return; // Let the input handle spacebar normally
+    }
     
     if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' ', 'Escape', '+', '-', '0'].includes(e.key)) {
         e.preventDefault();
@@ -774,7 +792,6 @@ function handleKeyboard(e) {
             break;
     }
 }
-
 // Cleanup function to remove event listeners
 export function cleanupEventHandlers() {
     eventManager.removeAll();
