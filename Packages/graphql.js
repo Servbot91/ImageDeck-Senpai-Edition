@@ -197,26 +197,23 @@ export async function fetchGalleriesByTags(tagIds, page = 1, perPage = 50) {
     }
 }
 
-// Add this helper to handle the filtering
+
 export async function applyGalleryTagFilter(tagIds) {
     // Store filter in session storage
     sessionStorage.setItem('galleryTagFilter', JSON.stringify(tagIds));
     
-    // Redirect to filtered view or refresh current view
-    if (window.location.pathname === '/galleries') {
-        // Refresh current page with filter applied
-        window.location.reload();
-    } else {
-        // Navigate to galleries page with filter
-        window.location.href = '/galleries';
-    }
+    // Emit event to notify deck that filter changed
+    window.dispatchEvent(new CustomEvent('galleryTagFilterChanged', { 
+        detail: { tagIds } 
+    }));
 }
 
+// Also update the clear function
 export function clearGalleryTagFilter() {
     sessionStorage.removeItem('galleryTagFilter');
-    if (window.location.pathname === '/galleries') {
-        window.location.reload();
-    }
+    window.dispatchEvent(new CustomEvent('galleryTagFilterChanged', { 
+        detail: { tagIds: [] } 
+    }));
 }
 
 // Enhanced version of detectContext to handle tag filtering
@@ -233,9 +230,13 @@ export function detectContextWithFilter() {
                 if (!baseContext.filter) {
                     baseContext.filter = {};
                 }
-                baseContext.filter.tags = {
-                    value: tagIds,
-                    modifier: "INCLUDES"
+                // Ensure we merge with existing filters properly
+                baseContext.filter = {
+                    ...baseContext.filter,
+                    tags: {
+                        value: tagIds,
+                        modifier: "INCLUDES"
+                    }
                 };
             }
         } catch (e) {

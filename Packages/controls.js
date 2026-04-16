@@ -310,9 +310,51 @@ function updateSelectedTags(selectedTags, tagId, isSelected) {
     }
 }
 
+async function updateContentViewWithFilter() {
+    const tagFilter = sessionStorage.getItem('galleryTagFilter');
+    let tagIds = [];
+    
+    if (tagFilter) {
+        try {
+            tagIds = JSON.parse(tagFilter);
+        } catch (e) {
+            console.error('Error parsing tag filter:', e);
+        }
+    }
+    
+    // Emit custom event that deck.js can listen to
+    window.dispatchEvent(new CustomEvent('updateDeckContent', { 
+        detail: { tagIds } 
+    }));
+}
+
+function getCurrentFilterTags() {
+    const tagFilter = sessionStorage.getItem('galleryTagFilter');
+    if (tagFilter) {
+        try {
+            return JSON.parse(tagFilter);
+        } catch (e) {
+            console.error('Error parsing tag filter:', e);
+            return [];
+        }
+    }
+    return [];
+}
+
 export function setupEventHandlers(container, callbacks = {}) {
     const { closeDeck, startAutoPlay, stopAutoPlay, loadNextChunk } = callbacks;
     setDeckActive(true);
+    
+    // Listen for filter changes and update content dynamically
+	const filterChangeListener = async (e) => {
+		console.log('[Image Deck] Filter changed, updating content');
+		// Force refresh the context to include new filter
+		storedContextInfo = detectContext();
+		await updateContentViewWithFilter();
+	};
+    
+    window.addEventListener('galleryTagFilterChanged', filterChangeListener);
+    storeElementData(container, { filterChangeListener });
     
     // Store the keyboard handler reference so we can remove it later
     const keyboardHandler = handleKeyboard;
@@ -334,7 +376,12 @@ export function setupEventHandlers(container, callbacks = {}) {
     if (metadataCloseBtn) {
         eventManager.add(metadataCloseBtn, 'click', closeMetadataModal);
     }
-
+	
+    const galleryFilterBtn = container.querySelector('.gallery-filter-btn');
+    if (galleryFilterBtn) {
+        eventManager.add(galleryFilterBtn, 'click', showGalleryTagFilter);
+    }
+    
     // Control buttons
     const controlButtons = container.querySelectorAll('.image-deck-control-btn');
 
@@ -398,6 +445,26 @@ export function setupEventHandlers(container, callbacks = {}) {
                     console.log('[Image Deck] Unknown action:', action);
             }
         });
+    }); // End of controlButtons.forEach
+
+    // Handle remove filter tag buttons - moved outside the controlButtons loop
+    const removeTagButtons = container.querySelectorAll('.remove-filter-tag');
+    removeTagButtons.forEach(button => {
+        eventManager.add(button, 'click', async (e) => {
+            e.stopPropagation();
+            const tagId = button.dataset.tagId;
+            const currentTags = getCurrentFilterTags();
+            const newTags = currentTags.filter(id => id !== tagId);
+            
+            if (newTags.length > 0) {
+                sessionStorage.setItem('galleryTagFilter', JSON.stringify(newTags));
+            } else {
+                sessionStorage.removeItem('galleryTagFilter');
+            }
+            
+            // Notify about filter change
+            window.dispatchEvent(new CustomEvent('galleryTagFilterChanged'));
+        });
     });
 
     const swiper = state.getSwiper();
@@ -419,6 +486,7 @@ export function setupEventHandlers(container, callbacks = {}) {
     setupSwipeGestures(container, eventManager);
     setupMouseWheel(container, eventManager);
 }
+
 
 function setupSwipeGestures(container, eventManager) {
     let touchStartY = 0;

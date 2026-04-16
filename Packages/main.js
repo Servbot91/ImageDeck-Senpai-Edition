@@ -33,14 +33,8 @@ function handleNavigation() {
         document.body.classList.remove('image-deck-open');
     }
     
-    // Add gallery filter button when navigating to gallery pages
-    if (window.location.pathname === '/galleries') {
-        setTimeout(() => {
-            import('./ui.js').then(module => {
-                module.addGalleryFilterButton();
-            });
-        }, 100);
-    }
+    // The gallery filter button is already part of the deck UI, so no need to add it separately
+    // The functionality is accessed through the gallery filter button in the deck controls
 }
 
 // Enhance history methods to detect SPA navigations

@@ -1,177 +1,6 @@
 // ui/ui.js
 import { createLaunchButton, cleanupButton, retryCreateButton } from './button.js';
-import { searchTags, applyGalleryTagFilter, clearGalleryTagFilter } from './graphql.js';
 
-function showGalleryTagFilter() {
-    // Remove existing modal if present
-    const existingModal = document.querySelector('.gallery-tag-filter-modal');
-    if (existingModal) {
-        existingModal.remove();
-    }
-    
-    // Create modal for tag selection
-    const modal = document.createElement('div');
-    modal.className = 'gallery-tag-filter-modal';
-    modal.style.cssText = `
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        background: #2d2d2d;
-        border: 1px solid #444;
-        border-radius: 8px;
-        padding: 20px;
-        z-index: 10000;
-        min-width: 300px;
-        max-width: 500px;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-        max-height: 80vh;
-        overflow: hidden;
-    `;
-    
-    modal.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-            <h4>Filter Galleries by Tag</h4>
-            <button class="close-filter-modal" style="background: none; border: none; color: white; font-size: 20px; cursor: pointer; padding: 0; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;">×</button>
-        </div>
-        <input type="text" class="tag-search-input" placeholder="Search tags..." style="width: 100%; padding: 8px; margin-bottom: 15px; background: #333; border: 1px solid #555; color: white; border-radius: 4px;">
-        <div class="tag-list" style="max-height: 300px; overflow-y: auto; margin-bottom: 15px;"></div>
-        <div style="margin-top: 15px; display: flex; gap: 10px; justify-content: flex-end;">
-            <button class="clear-tag-filter btn btn-secondary" style="padding: 6px 12px;">Clear</button>
-            <button class="apply-tag-filter btn btn-primary" style="padding: 6px 12px;">Apply Filter</button>
-        </div>
-    `;
-    
-    document.body.appendChild(modal);
-    
-    // Add close functionality
-    const closeBtn = modal.querySelector('.close-filter-modal');
-    closeBtn.addEventListener('click', () => {
-        modal.remove();
-    });
-    
-    // Close on Escape key
-    const escapeHandler = (e) => {
-        if (e.key === 'Escape') {
-            modal.remove();
-            document.removeEventListener('keydown', escapeHandler);
-        }
-    };
-    document.addEventListener('keydown', escapeHandler);
-    
-    // Close on click outside
-    modal.addEventListener('click', (e) => {
-        if (e.target === modal) {
-            modal.remove();
-        }
-    });
-    
-    // Setup tag search and selection
-    const searchInput = modal.querySelector('.tag-search-input');
-    const tagList = modal.querySelector('.tag-list');
-    let selectedTags = [];
-    
-    // Load currently applied tags if any
-    const currentFilter = sessionStorage.getItem('galleryTagFilter');
-    if (currentFilter) {
-        try {
-            selectedTags = JSON.parse(currentFilter);
-        } catch (e) {
-            console.error('Error parsing current filter:', e);
-        }
-    }
-    
-    searchInput.addEventListener('input', async (e) => {
-        const query = e.target.value.trim();
-        if (query.length >= 2) {
-            try {
-                const tags = await searchTags(query);
-                renderTagList(tags, tagList, selectedTags);
-            } catch (error) {
-                console.error('Error searching tags:', error);
-                tagList.innerHTML = '<div style="color: #ff6b6b; padding: 8px;">Error loading tags</div>';
-            }
-        } else {
-            tagList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
-        }
-    });
-    
-    // Trigger initial search if there's text
-    if (searchInput.value.trim().length >= 2) {
-        searchInput.dispatchEvent(new Event('input'));
-    } else {
-        tagList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
-    }
-    
-    // Apply filter button
-    const applyBtn = modal.querySelector('.apply-tag-filter');
-    applyBtn.addEventListener('click', () => {
-        if (selectedTags.length > 0) {
-            applyGalleryTagFilter(selectedTags);
-        } else {
-            // Clear filter if no tags selected
-            clearGalleryTagFilter();
-        }
-        modal.remove();
-    });
-    
-    // Clear filter button
-    const clearBtn = modal.querySelector('.clear-tag-filter');
-    clearBtn.addEventListener('click', () => {
-        selectedTags = [];
-        searchInput.value = '';
-        tagList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
-        clearGalleryTagFilter();
-    });
-}
-
-function renderTagList(tags, container, selectedTags) {
-    if (!tags || tags.length === 0) {
-        container.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">No tags found</div>';
-        return;
-    }
-    
-    container.innerHTML = tags.map(tag => `
-        <div class="tag-item" style="padding: 8px; cursor: pointer; display: flex; align-items: center; border-radius: 4px; margin-bottom: 2px; ${selectedTags.includes(tag.id) ? 'background: #444;' : 'background: #333;'}">
-            <input type="checkbox" id="tag-${tag.id}" ${selectedTags.includes(tag.id) ? 'checked' : ''} style="margin-right: 8px; cursor: pointer;">
-            <label for="tag-${tag.id}" style="cursor: pointer; flex-grow: 1;">${tag.name}</label>
-        </div>
-    `).join('');
-    
-    // Add event listeners
-    container.querySelectorAll('.tag-item').forEach((item, index) => {
-        const checkbox = item.querySelector('input[type="checkbox"]');
-        const tagId = tags[index].id;
-        
-        // Click on entire item toggles checkbox
-        item.addEventListener('click', (e) => {
-            if (e.target !== checkbox) {
-                checkbox.checked = !checkbox.checked;
-                updateSelectedTags(selectedTags, tagId, checkbox.checked);
-            }
-        });
-        
-        // Direct checkbox change
-        checkbox.addEventListener('change', (e) => {
-            updateSelectedTags(selectedTags, tagId, e.target.checked);
-        });
-    });
-}
-
-function updateSelectedTags(selectedTags, tagId, isSelected) {
-    if (isSelected) {
-        if (!selectedTags.includes(tagId)) {
-            selectedTags.push(tagId);
-        }
-    } else {
-        const idx = selectedTags.indexOf(tagId);
-        if (idx > -1) {
-            selectedTags.splice(idx, 1);
-        }
-    }
-}
-
-// Export initialize function for main.js
 export function initialize() {
     console.log('[Image Deck] Initializing...');
 
@@ -198,14 +27,8 @@ export function initialize() {
             if (!hasButton && shouldHaveButton) {
                 createLaunchButton();
             }
-            
-            // Add gallery filter button on gallery pages
-            if (window.location.pathname.startsWith('/galleries')) {
-                addGalleryFilterButton();
-            }
         }, 300);
     });
-
     // Observe the main content area for changes
     const mainContent = document.querySelector('.main-content') ||
                       document.querySelector('[role="main"]') ||
@@ -218,7 +41,6 @@ export function initialize() {
 
     console.log('[Image Deck] Initialized');
 }
-
 
 function initPreviewObserver() {
     const previewObserver = new MutationObserver((mutations) => {

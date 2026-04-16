@@ -37,6 +37,7 @@ export function detectContext() {
                         if (!filters) {
                             filters = {};
                         }
+                        // Merge with existing filters instead of overwriting
                         filters.tags = {
                             value: tagIds,
                             modifier: "INCLUDES"
