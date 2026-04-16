@@ -174,8 +174,16 @@ function showGalleryTagFilter() {
             <h4>Filter Galleries by Tag</h4>
             <button class="close-filter-modal" style="background: none; border: none; color: white; font-size: 20px; cursor: pointer; padding: 0; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;">×</button>
         </div>
-        <input type="text" class="tag-search-input" placeholder="Search tags..." style="width: 100%; padding: 8px; margin-bottom: 15px; background: #333; border: 1px solid #555; color: white; border-radius: 4px;">
-        <div class="tag-list" style="max-height: 300px; overflow-y: auto; margin-bottom: 15px;"></div>
+        <div style="margin-bottom: 10px;">
+            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Included Tags</label>
+            <input type="text" class="included-tag-search" placeholder="Search tags..." style="width: 100%; padding: 8px; margin-bottom: 10px; background: #333; border: 1px solid #555; color: white; border-radius: 4px;">
+            <div class="included-tag-list" style="max-height: 150px; overflow-y: auto; margin-bottom: 15px; border: 1px solid #444; border-radius: 4px; padding: 5px;"></div>
+        </div>
+        <div style="margin-bottom: 10px;">
+            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Excluded Tags</label>
+            <input type="text" class="excluded-tag-search" placeholder="Search tags..." style="width: 100%; padding: 8px; margin-bottom: 10px; background: #333; border: 1px solid #555; color: white; border-radius: 4px;">
+            <div class="excluded-tag-list" style="max-height: 150px; overflow-y: auto; margin-bottom: 15px; border: 1px solid #444; border-radius: 4px; padding: 5px;"></div>
+        </div>
         <div style="margin-top: 15px; display: flex; gap: 10px; justify-content: flex-end;">
             <button class="clear-tag-filter btn btn-secondary" style="padding: 6px 12px;">Clear</button>
             <button class="apply-tag-filter btn btn-primary" style="padding: 6px 12px;">Apply Filter</button>
@@ -207,47 +215,75 @@ function showGalleryTagFilter() {
     });
     
     // Setup tag search and selection
-    const searchInput = modal.querySelector('.tag-search-input');
-    const tagList = modal.querySelector('.tag-list');
-    let selectedTags = [];
+    const includedSearchInput = modal.querySelector('.included-tag-search');
+    const excludedSearchInput = modal.querySelector('.excluded-tag-search');
+    const includedTagList = modal.querySelector('.included-tag-list');
+    const excludedTagList = modal.querySelector('.excluded-tag-list');
+    let includedTags = [];
+    let excludedTags = [];
     
     // Load currently applied tags if any
     const currentFilter = sessionStorage.getItem('galleryTagFilter');
     if (currentFilter) {
         try {
-            selectedTags = JSON.parse(currentFilter);
+            const filterObj = JSON.parse(currentFilter);
+            includedTags = filterObj.included || [];
+            excludedTags = filterObj.excluded || [];
         } catch (e) {
             console.error('Error parsing current filter:', e);
         }
     }
     
-    searchInput.addEventListener('input', async (e) => {
+    // Included tags search
+    includedSearchInput.addEventListener('input', async (e) => {
         const query = e.target.value.trim();
         if (query.length >= 2) {
             try {
                 const tags = await searchTags(query);
-                renderTagList(tags, tagList, selectedTags);
+                renderTagList(tags, includedTagList, includedTags, 'included');
             } catch (error) {
                 console.error('Error searching tags:', error);
-                tagList.innerHTML = '<div style="color: #ff6b6b; padding: 8px;">Error loading tags</div>';
+                includedTagList.innerHTML = '<div style="color: #ff6b6b; padding: 8px;">Error loading tags</div>';
             }
         } else {
-            tagList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
+            includedTagList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
+        }
+    });
+    
+    // Excluded tags search
+    excludedSearchInput.addEventListener('input', async (e) => {
+        const query = e.target.value.trim();
+        if (query.length >= 2) {
+            try {
+                const tags = await searchTags(query);
+                renderTagList(tags, excludedTagList, excludedTags, 'excluded');
+            } catch (error) {
+                console.error('Error searching tags:', error);
+                excludedTagList.innerHTML = '<div style="color: #ff6b6b; padding: 8px;">Error loading tags</div>';
+            }
+        } else {
+            excludedTagList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
         }
     });
     
     // Trigger initial search if there's text
-    if (searchInput.value.trim().length >= 2) {
-        searchInput.dispatchEvent(new Event('input'));
+    if (includedSearchInput.value.trim().length >= 2) {
+        includedSearchInput.dispatchEvent(new Event('input'));
     } else {
-        tagList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
+        includedTagList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
+    }
+    
+    if (excludedSearchInput.value.trim().length >= 2) {
+        excludedSearchInput.dispatchEvent(new Event('input'));
+    } else {
+        excludedTagList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
     }
     
     // Apply filter button
     const applyBtn = modal.querySelector('.apply-tag-filter');
     applyBtn.addEventListener('click', () => {
-        if (selectedTags.length > 0) {
-            applyGalleryTagFilter(selectedTags);
+        if (includedTags.length > 0 || excludedTags.length > 0) {
+            applyGalleryTagFilter(includedTags, excludedTags);
         } else {
             // Clear filter if no tags selected
             clearGalleryTagFilter();
@@ -258,14 +294,18 @@ function showGalleryTagFilter() {
     // Clear filter button
     const clearBtn = modal.querySelector('.clear-tag-filter');
     clearBtn.addEventListener('click', () => {
-        selectedTags = [];
-        searchInput.value = '';
-        tagList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
+        includedTags = [];
+        excludedTags = [];
+        includedSearchInput.value = '';
+        excludedSearchInput.value = '';
+        includedTagList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
+        excludedTagList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
         clearGalleryTagFilter();
     });
 }
 
-function renderTagList(tags, container, selectedTags) {
+// Update renderTagList to support included/excluded distinction
+function renderTagList(tags, container, selectedTags, type) {
     if (!tags || tags.length === 0) {
         container.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">No tags found</div>';
         return;
@@ -273,8 +313,8 @@ function renderTagList(tags, container, selectedTags) {
     
     container.innerHTML = tags.map(tag => `
         <div class="tag-item" style="padding: 8px; cursor: pointer; display: flex; align-items: center; border-radius: 4px; margin-bottom: 2px; ${selectedTags.includes(tag.id) ? 'background: #444;' : 'background: #333;'}">
-            <input type="checkbox" id="tag-${tag.id}" ${selectedTags.includes(tag.id) ? 'checked' : ''} style="margin-right: 8px; cursor: pointer;">
-            <label for="tag-${tag.id}" style="cursor: pointer; flex-grow: 1;">${tag.name}</label>
+            <input type="checkbox" id="tag-${type}-${tag.id}" ${selectedTags.includes(tag.id) ? 'checked' : ''} style="margin-right: 8px; cursor: pointer;">
+            <label for="tag-${type}-${tag.id}" style="cursor: pointer; flex-grow: 1;">${tag.name}</label>
         </div>
     `).join('');
     
@@ -298,6 +338,7 @@ function renderTagList(tags, container, selectedTags) {
     });
 }
 
+// Update updateSelectedTags to work with the appropriate tag list
 function updateSelectedTags(selectedTags, tagId, isSelected) {
     if (isSelected) {
         if (!selectedTags.includes(tagId)) {

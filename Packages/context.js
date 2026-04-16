@@ -1,5 +1,23 @@
 import { parseUrlFilters } from './filters.js';
 
+function getCurrentFilterTags() {
+    const tagFilter = sessionStorage.getItem('galleryTagFilter');
+    if (tagFilter) {
+        try {
+            const filterObj = JSON.parse(tagFilter);
+            return {
+                included: filterObj.included || [],
+                excluded: filterObj.excluded || []
+            };
+        } catch (e) {
+            console.error('Error parsing tag filter:', e);
+            return { included: [], excluded: [] };
+        }
+    }
+    return { included: [], excluded: [] };
+}
+
+// Update detectContext in context.js to handle the new filter structure
 export function detectContext() {
     const path = window.location.pathname;
     const hash = window.location.hash;
@@ -28,25 +46,35 @@ export function detectContext() {
             let filters = parseUrlFilters(search);
             
             // Check for tag filter in session storage
-			const tagFilter = sessionStorage.getItem('galleryTagFilter');
-			if (tagFilter) {
-				try {
-					const tagIds = JSON.parse(tagFilter);
-					if (tagIds.length > 0) {
-						// Apply tag filter to context
-						if (!filters) {
-							filters = {};
-						}
-						// Merge with existing filters instead of overwriting
-						filters.tags = {
-							value: tagIds,
-							modifier: "INCLUDES"
-						};
-					}
-				} catch (e) {
-					console.error('Error parsing tag filter:', e);
-				}
-			}
+            const tagFilter = sessionStorage.getItem('galleryTagFilter');
+            if (tagFilter) {
+                try {
+                    const filterObj = JSON.parse(tagFilter);
+                    if ((filterObj.included && filterObj.included.length > 0) || 
+                        (filterObj.excluded && filterObj.excluded.length > 0)) {
+                        // Apply tag filter to context
+                        if (!filters) {
+                            filters = {};
+                        }
+                        // Add included tags
+                        if (filterObj.included.length > 0) {
+                            filters.tags = {
+                                value: filterObj.included,
+                                modifier: "INCLUDES"
+                            };
+                        }
+                        // Add excluded tags
+                        if (filterObj.excluded.length > 0) {
+                            filters.tags = {
+                                ...filters.tags,
+                                excluded: filterObj.excluded
+                            };
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error parsing tag filter:', e);
+                }
+            }
             
             return { type: 'galleries', isGalleryListing: true, filter: filters, hash };
         }
@@ -131,7 +159,6 @@ export function detectContext() {
 
     return null;
 }
-
 // Get visible images from current page
 export function getVisibleImages() {
     const images = [];

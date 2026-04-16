@@ -198,13 +198,17 @@ export async function fetchGalleriesByTags(tagIds, page = 1, perPage = 50) {
 }
 
 
-export async function applyGalleryTagFilter(tagIds) {
-    // Store filter in session storage
-    sessionStorage.setItem('galleryTagFilter', JSON.stringify(tagIds));
+export async function applyGalleryTagFilter(includedTags, excludedTags) {
+    // Store filter in session storage as an object
+    const filterObj = {
+        included: includedTags,
+        excluded: excludedTags
+    };
+    sessionStorage.setItem('galleryTagFilter', JSON.stringify(filterObj));
     
     // Emit event to notify deck that filter changed
     window.dispatchEvent(new CustomEvent('galleryTagFilterChanged', { 
-        detail: { tagIds } 
+        detail: { includedTags, excludedTags } 
     }));
 }
 
@@ -212,7 +216,7 @@ export async function applyGalleryTagFilter(tagIds) {
 export function clearGalleryTagFilter() {
     sessionStorage.removeItem('galleryTagFilter');
     window.dispatchEvent(new CustomEvent('galleryTagFilterChanged', { 
-        detail: { tagIds: [] } 
+        detail: { includedTags: [], excludedTags: [] } 
     }));
 }
 
