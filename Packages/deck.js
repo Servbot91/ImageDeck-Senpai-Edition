@@ -338,8 +338,7 @@ function updateUI(container) {
 
     uiUpdatePending = true;
     requestAnimationFrame(() => {
-		const { images: currentImages, totalPages, currentChunkPage } = state.getState();
-        const swiper = state.getSwiper();
+
         let current = 1;
         const displayedTotal = currentImages.length;
         const actualTotal = totalImageCount || displayedTotal;

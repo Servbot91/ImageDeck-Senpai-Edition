@@ -1,15 +1,63 @@
-// Detect mobile device
+
 export const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
                      window.innerWidth < 768 ||
                      ('ontouchstart' in window);
 
-// Create imageCache in utils.js scope
-const imageCache = new Map();
+
+class LRUCache {
+    constructor(maxSize = 20, ttl = 5 * 60 * 1000) { 
+        this.maxSize = maxSize;
+        this.ttl = ttl;
+        this.cache = new Map();
+    }
+
+    set(key, value) {
+        const now = Date.now();
+
+        if (this.cache.size >= this.maxSize) {
+            const firstKey = this.cache.keys().next().value;
+            this.cache.delete(firstKey);
+        }
+
+        this.cache.set(key, {
+            value,
+            timestamp: now
+        });
+    }
+
+    get(key) {
+        const entry = this.cache.get(key);
+        if (!entry) return undefined;
+
+        const now = Date.now();
+        if (now - entry.timestamp > this.ttl) {
+            this.cache.delete(key); 
+            return undefined;
+        }
+
+        this.cache.delete(key);
+        this.cache.set(key, entry);
+        return entry.value;
+    }
+
+    has(key) {
+        return this.get(key) !== undefined;
+    }
+
+    clear() {
+        this.cache.clear();
+    }
+
+    size() {
+        return this.cache.size;
+    }
+}
+
+const imageCache = new LRUCache(20, 5 * 60 * 1000); 
 
 export function preloadImage(src, priority = false) {
+    const shouldCache = priority || imageCache.size() < 20;
 
-    const shouldCache = priority || imageCache.size < 20; 
-    
     if (shouldCache && imageCache.has(src)) {
         return Promise.resolve(imageCache.get(src));
     }
@@ -17,7 +65,6 @@ export function preloadImage(src, priority = false) {
     return new Promise((resolve, reject) => {
         const img = new Image();
         img.decoding = 'async';
-        
         img.loading = priority ? 'eager' : (isMobile ? 'lazy' : 'lazy');
 
         img.onload = () => {
@@ -45,44 +92,38 @@ export async function safeFetch(url, options, context) {
     }
 }
 
-// Export the cache for debugging purposes
 export function getImageCache() {
-    return imageCache;
+    return imageCache.cache; 
 }
 
-// Export function to clear cache if needed
 export function clearImageCache() {
     imageCache.clear();
 }
 
-export function memoize(fn, ttl = 300000) { // 5 minutes default
+export function memoize(fn, ttl = 300000) {
     const cache = new Map();
-    
+
     return function(...args) {
         const key = JSON.stringify(args);
         const now = Date.now();
-        
+
         if (cache.has(key)) {
             const { value, timestamp } = cache.get(key);
             if (now - timestamp < ttl) {
                 return value;
             }
         }
-        
+
         const result = fn.apply(this, args);
         cache.set(key, { value: result, timestamp: now });
         return result;
     };
 }
 
-// Example usage for expensive operations:
 export const getSlideTemplate = memoize((img, contextInfo, isEager = false) => {
-    // Your existing getSlideTemplate logic here
-    // This will cache results for identical inputs
-}, 600000); // 10 minutes cache
 
-// For GraphQL operations:
+}, 600000);
+
 export const fetchImageMetadata = memoize(async (imageId) => {
-    // Your existing fetch logic
-    // Will cache results for 5 minutes by default
+
 }, 300000);
