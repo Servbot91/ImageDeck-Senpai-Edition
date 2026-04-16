@@ -13,6 +13,9 @@ export function initialize() {
     // Create launch button on relevant pages
     retryCreateButton();
 
+    // Initialize preview button hijacking
+    initPreviewObserver();
+
     // Watch for DOM changes to detect when React renders new content
     let debounceTimer;
     const observer = new MutationObserver((mutations) => {
@@ -41,7 +44,6 @@ export function initialize() {
 
     console.log('[Image Deck] Initialized');
 }
-
 function initPreviewObserver() {
     const previewObserver = new MutationObserver((mutations) => {
         mutations.forEach((mutation) => {
@@ -50,52 +52,60 @@ function initPreviewObserver() {
                     // Handle both direct matches and child queries
                     let previewButtons = [];
                     
+                    // Look for buttons with magnifying glass SVG (preview buttons)
+                    const isPreviewButton = (el) => {
+                        if (el.tagName !== 'BUTTON') return false;
+                        const svg = el.querySelector('svg');
+                        return svg && svg.dataset.icon === 'magnifying-glass';
+                    };
+                    
                     // Check if the node itself is a preview button
-                    if (node.matches && node.matches('.preview-button')) {
+                    if (isPreviewButton(node)) {
                         previewButtons.push(node);
                     }
                     
                     // Check for preview buttons within the node
                     if (node.querySelectorAll) {
-                        previewButtons = [...previewButtons, ...node.querySelectorAll('.preview-button')];
+                        const buttons = node.querySelectorAll('button');
+                        buttons.forEach(btn => {
+                            if (isPreviewButton(btn)) {
+                                previewButtons.push(btn);
+                            }
+                        });
                     }
                     
-                    previewButtons.forEach((previewContainer) => {
+                    previewButtons.forEach((button) => {
                         // Make sure we haven't already processed this button
-                        if (!previewContainer.dataset.hijacked) {
-                            previewContainer.dataset.hijacked = 'true';
+                        if (!button.dataset.hijacked) {
+                            button.dataset.hijacked = 'true';
                             
-                            // Find the actual button inside the container
-                            const button = previewContainer.querySelector('button');
-                            if (button) {
-                                // Remove existing event listeners by cloning
-                                const newButton = button.cloneNode(true);
-                                button.parentNode.replaceChild(newButton, button);
+                            // Remove existing event listeners by cloning
+                            const newButton = button.cloneNode(true);
+                            button.parentNode.replaceChild(newButton, button);
+                            
+                            // Add our custom click handler
+                            newButton.addEventListener('click', (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                console.log('[Image Deck] Preview button clicked (dynamic)');
                                 
-                                // Add our custom click handler
-                                newButton.addEventListener('click', (e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    console.log('[Image Deck] Preview button clicked (dynamic)');
-                                    
-                                    // Find the image associated with this preview button
-                                    const card = previewContainer.closest('.image-card, .grid-card');
-                                    const img = card?.querySelector('img[src*="/image/"]');
-                                    
-                                    let targetImageId = null;
-                                    if (img) {
-                                        const idMatch = img.src.match(/\/image\/(\d+)/);
-                                        if (idMatch) {
-                                            targetImageId = idMatch[1];
-                                        }
+                                // Find the image associated with this preview button
+                                const card = newButton.closest('.image-card, .grid-card');
+                                const img = card?.querySelector('img[src*="/image/"]');
+                                
+                                let targetImageId = null;
+                                if (img) {
+                                    const idMatch = img.src.match(/\/image\/(\d+)/);
+                                    if (idMatch) {
+                                        targetImageId = idMatch[1];
                                     }
-                                    
-                                    // Pass the target image ID to openDeck
-                                    import('./deck.js').then(module => {
-                                        module.openDeck(targetImageId);
-                                    });
+                                }
+                                
+                                // Pass the target image ID to openDeck
+                                import('./deck.js').then(module => {
+                                    module.openDeck(targetImageId);
                                 });
-                            }
+                            });
                         }
                     });
                 }
@@ -109,8 +119,50 @@ function initPreviewObserver() {
     });
     
     // Also process existing preview buttons on page load
-    document.querySelectorAll('.preview-button').forEach(processPreviewButton);
+    processExistingPreviewButtons();
 }
+
+
+
+function processExistingPreviewButtons() {
+    // Look for all buttons with magnifying glass icon
+    const buttons = document.querySelectorAll('button');
+    buttons.forEach(button => {
+        const svg = button.querySelector('svg');
+        if (svg && svg.dataset.icon === 'magnifying-glass' && !button.dataset.hijacked) {
+            button.dataset.hijacked = 'true';
+            
+            // Remove existing event listeners by cloning
+            const newButton = button.cloneNode(true);
+            button.parentNode.replaceChild(newButton, button);
+            
+            // Add our custom click handler
+            newButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('[Image Deck] Preview button clicked');
+                
+                // Find the image associated with this preview button
+                const card = newButton.closest('.image-card, .grid-card');
+                const img = card?.querySelector('img[src*="/image/"]');
+                
+                let targetImageId = null;
+                if (img) {
+                    const idMatch = img.src.match(/\/image\/(\d+)/);
+                    if (idMatch) {
+                        targetImageId = idMatch[1];
+                    }
+                }
+                
+                // Pass the target image ID to openDeck
+                import('./deck.js').then(module => {
+                    module.openDeck(targetImageId);
+                });
+            });
+        }
+    });
+}
+
 
 function processPreviewButton(previewContainer) {
     if (!previewContainer.dataset.hijacked) {
