@@ -1,5 +1,5 @@
 // main.js
-import { initialize, initPlugin } from './ui.js';
+import { initialize } from './ui.js';
 import './styles.css';
 
 // Initialize app once DOM is ready

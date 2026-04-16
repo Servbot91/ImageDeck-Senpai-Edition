@@ -131,7 +131,11 @@ class EventManager {
     
     static removeAll() {
         for (const [key, { element, event, handler }] of this.instance.handlers) {
-            element.removeEventListener(event, handler);
+            try {
+                element.removeEventListener(event, handler);
+            } catch (e) {
+                console.warn('Failed to remove event listener:', e);
+            }
         }
         this.instance.handlers.clear();
     }
@@ -310,6 +314,9 @@ export function setupEventHandlers(container, callbacks = {}) {
     const { closeDeck, startAutoPlay, stopAutoPlay, loadNextChunk } = callbacks;
     setDeckActive(true);
     
+    // Store the keyboard handler reference so we can remove it later
+    const keyboardHandler = handleKeyboard;
+    
     // Close button
     const closeBtn = container.querySelector('.image-deck-close');
     if (closeBtn) {
@@ -336,14 +343,13 @@ export function setupEventHandlers(container, callbacks = {}) {
             const action = button.dataset.action;
             const swiper = state.getSwiper();
 
-            // Handle gallery filter button (no data-action attribute)
-            if (!action) {
-                if (button.classList.contains('gallery-filter-btn')) {
-                    showGalleryTagFilter();
-                    return;
-                }
+            // Handle gallery filter button 
+            if (button.classList.contains('gallery-filter-btn')) {
+                showGalleryTagFilter();
                 return;
             }
+
+            if (!action) return;
 
             switch(action) {
                 case 'prev':
@@ -407,14 +413,12 @@ export function setupEventHandlers(container, callbacks = {}) {
         }, 0);
     }
 
-    // Keyboard controls
-    const keyboardHandler = handleKeyboard;
+    // Add keyboard controls with proper reference storage
     eventManager.add(document, 'keydown', keyboardHandler, true);
     
     setupSwipeGestures(container, eventManager);
     setupMouseWheel(container, eventManager);
 }
-
 
 function setupSwipeGestures(container, eventManager) {
     let touchStartY = 0;
@@ -666,8 +670,13 @@ export function cleanupEventHandlers() {
     eventManager.removeAll();
     isDeckActive = false;
     
-
+    // Remove global keyboard handler specifically
+    document.removeEventListener('keydown', handleKeyboard, true);
+    
     const swiper = state.getSwiper();
     if (swiper) {
+        // Remove swiper event listeners
+        swiper.off('slideChangeTransitionEnd');
+        // Remove any other swiper listeners you've added
     }
 }

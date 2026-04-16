@@ -2,94 +2,6 @@
 import { createLaunchButton, cleanupButton, retryCreateButton } from './button.js';
 import { searchTags, applyGalleryTagFilter, clearGalleryTagFilter } from './graphql.js';
 
-// Simplified gallery filter button creation
-export function addGalleryFilterButton() {
-    // Try to add button immediately
-    createGalleryFilterButton();
-    
-    // Also try after delays to catch dynamic content
-    setTimeout(createGalleryFilterButton, 500);
-    setTimeout(createGalleryFilterButton, 1500);
-}
-
-function createGalleryFilterButton() {
-    // Only run on gallery pages
-    if (!window.location.pathname.startsWith('/galleries')) {
-        return;
-    }
-    
-    // Check if button already exists
-    if (document.querySelector('.gallery-filter-btn')) {
-        return;
-    }
-    
-    // Look for the filter toolbar specifically
-    let targetContainer = document.querySelector('.btn-toolbar') || 
-                         document.querySelector('.filter-container') ||
-                         document.querySelector('.d-flex.justify-content-between.align-items-center');
-    
-    // If not found, look for page header area
-    if (!targetContainer) {
-        const headers = document.querySelectorAll('h1, h2, h3');
-        for (let header of headers) {
-            if (header.textContent.toLowerCase().includes('galleries') || 
-                header.textContent.toLowerCase().includes('gallery')) {
-                targetContainer = header.parentElement;
-                break;
-            }
-        }
-    }
-    
-    // If still not found, create in a common location
-    if (!targetContainer) {
-        // Try to find the main content area
-        const mainContent = document.querySelector('.main-content') || 
-                           document.querySelector('[role="main"]') || 
-                           document.body;
-        
-        // Look for the first row or container
-        targetContainer = mainContent.querySelector('.row:first-child') || 
-                         mainContent.querySelector('.container:first-child') ||
-                         mainContent;
-    }
-    
-    if (targetContainer) {
-        // Create a dedicated button group if needed
-        let buttonGroup = targetContainer.querySelector('.btn-group') || 
-                         targetContainer.querySelector('.d-flex');
-        
-        if (!buttonGroup) {
-            buttonGroup = document.createElement('div');
-            buttonGroup.className = 'btn-group ml-2';
-            buttonGroup.style.cssText = 'display: inline-flex; align-items: center; margin-left: 10px !important;';
-            targetContainer.appendChild(buttonGroup);
-        }
-        
-        // Check again if button exists before creating
-        if (!document.querySelector('.gallery-filter-btn')) {
-            const filterBtn = document.createElement('button');
-            filterBtn.className = 'gallery-filter-btn btn btn-secondary';
-            filterBtn.innerHTML = '☰';
-            filterBtn.title = 'Filter Galleries by Tag';
-            filterBtn.style.cssText = `
-                margin-left: 8px !important;
-                display: inline-flex !important;
-                align-items: center !important;
-                justify-content: center !important;
-                min-width: 38px !important;
-                height: 38px !important;
-                padding: 0 !important;
-                font-size: 16px !important;
-            `;
-            
-            buttonGroup.appendChild(filterBtn);
-            filterBtn.addEventListener('click', showGalleryTagFilter);
-            
-            console.log('[Image Deck] Gallery filter button added');
-        }
-    }
-}
-
 function showGalleryTagFilter() {
     // Remove existing modal if present
     const existingModal = document.querySelector('.gallery-tag-filter-modal');
@@ -307,15 +219,6 @@ export function initialize() {
     console.log('[Image Deck] Initialized');
 }
 
-// Add and export the initPlugin function
-export function initPlugin() {
-    initPreviewObserver();
-    
-    // Add gallery filter button on gallery pages
-    if (window.location.pathname.startsWith('/galleries')) {
-        addGalleryFilterButton();
-    }
-}
 
 function initPreviewObserver() {
     const previewObserver = new MutationObserver((mutations) => {
