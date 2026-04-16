@@ -93,14 +93,16 @@ async function updateDeckContentWithFilter() {
         // Reset pagination
         currentChunkPage = 1;
         
-        // Get current context
-        const contextToUse = storedContextInfo || contextInfo || detectContext();
+        // Always get fresh context that includes current filters
+        const contextToUse = detectContext();
         if (!contextToUse) {
             console.error('[Image Deck] Could not detect context for fetching');
             return;
         }
         
-        // Fetch filtered content
+        console.log('[Image Deck] Using context for filter update:', contextToUse);
+        
+        // Fetch filtered content directly from GraphQL
         const result = await fetchContextImages(contextToUse, 1, chunkSize);
         
         if (result && result.images) {
@@ -111,8 +113,10 @@ async function updateDeckContentWithFilter() {
             
             // Update Swiper with new content
             if (currentSwiper && currentSwiper.virtual) {
-                // Generate new slides using the same memoized template function
-                const newSlides = currentImages.map(img => memoizedGetSlideTemplate(img, contextInfo, false));
+                // Generate new slides using the same template function
+                const newSlides = currentImages.map(img => {
+                    return getSlideTemplateImpl(img, contextToUse, false);
+                });
 
                 // Update virtual slides
                 currentSwiper.virtual.slides = newSlides;
@@ -120,15 +124,19 @@ async function updateDeckContentWithFilter() {
                 
                 // Force swiper to rebuild and go to first slide
                 currentSwiper.slideTo(0, 0, false); // Instant transition
-                currentSwiper.update(); // Force update the swiper
                 
-                // Also update the wrapper to ensure proper rendering
+                // Multiple update attempts to ensure proper rendering
                 setTimeout(() => {
                     if (currentSwiper) {
                         currentSwiper.update();
-                        currentSwiper.slideTo(0, 0, false);
                     }
                 }, 50);
+                
+                setTimeout(() => {
+                    if (currentSwiper) {
+                        currentSwiper.update();
+                    }
+                }, 100);
             }
             
             // Update UI elements
@@ -143,6 +151,136 @@ async function updateDeckContentWithFilter() {
     } catch (error) {
         console.error('[Image Deck] Error updating content with filter:', error);
     }
+}
+
+async function forceRefreshGalleryCovers() {
+    console.log('[Image Deck] Force refreshing gallery covers');
+    
+    try {
+        // Get fresh context with current filters
+        const freshContext = detectContext();
+        console.log('[Image Deck] Fresh context:', freshContext);
+        
+        if (!freshContext) {
+            console.error('[Image Deck] Could not detect context for refresh');
+            return;
+        }
+        
+        // Reset pagination
+        currentChunkPage = 1;
+        
+        // Fetch fresh content
+        const result = await fetchContextImages(freshContext, 1, chunkSize);
+        console.log('[Image Deck] Fresh content result:', result);
+        
+        if (result && result.images) {
+            // Update the global state
+            currentImages = result.images;
+            totalImageCount = result.totalCount || 0;
+            totalPages = result.totalPages || 1;
+            
+            // Rebuild the swiper if it exists
+            if (currentSwiper) {
+                console.log('[Image Deck] Rebuilding Swiper with fresh content');
+                
+                // Get the container
+                const container = document.querySelector('.image-deck-container');
+                
+                if (container) {
+                    // Destroy existing swiper properly
+                    if (currentSwiper && typeof currentSwiper.destroy === 'function') {
+                        currentSwiper.destroy(true, true);
+                    }
+                    currentSwiper = null;
+                    
+                    // Clear the swiper wrapper to ensure clean slate
+                    const swiperEl = container.querySelector('.swiper');
+                    if (swiperEl) {
+                        const wrapper = swiperEl.querySelector('.swiper-wrapper');
+                        if (wrapper) {
+                            wrapper.innerHTML = '';
+                        }
+                    }
+                    
+                    // Reinitialize swiper using the existing initSwiper function
+                    currentSwiper = initSwiper(
+                        container, 
+                        currentImages, 
+                        pluginConfig, 
+                        () => {
+                            updateUI(container);
+                            checkAndLoadNextChunk(); 
+                        }, 
+                        savePosition, 
+                        freshContext
+                    );
+                    
+                    // Set global references
+                    window.currentSwiperInstance = currentSwiper;
+                    setCurrentSwiper(currentSwiper);
+                    
+                    // Force proper initialization and centering
+                    setTimeout(() => {
+                        if (currentSwiper) {
+                            currentSwiper.update();
+                            currentSwiper.slideTo(0, 0, false);
+                        }
+                    }, 50);
+                    
+                    // Additional update for good measure
+                    setTimeout(() => {
+                        if (currentSwiper) {
+                            currentSwiper.update();
+                        }
+                    }, 100);
+                    
+                    // Update UI
+                    updateUI(container);
+                    await updateFilterDisplayInUI();
+                    
+                    console.log('[Image Deck] Swiper rebuilt with', currentImages.length, 'items');
+                }
+            }
+        }
+    } catch (error) {
+        console.error('[Image Deck] Error force refreshing gallery covers:', error);
+    }
+}
+
+function getSlideTemplateImpl(img, contextInfo, isEager = false) {
+    const fullSrc = img.paths.image;
+    const isGallery = img.url && !contextInfo?.isSingleGallery;
+    const loading = isEager ? 'eager' : 'lazy';
+    const title = img.title || 'Untitled';
+
+    if (isGallery) {
+        const imageCountDisplay = img.image_count !== undefined ? 
+            `${GALLERY_ICON_SVG}: ${img.image_count}` : '';
+        
+        let performerDisplay = '';
+        if (img.performers && img.performers.length > 0) {
+            const performerNames = img.performers.map(p => p.name).join(', ');
+            performerDisplay = `<div class="gallery-performers" style="margin-top: 5px; font-size: 18px; color: #ccc;">${performerNames}</div>`;
+        }
+        
+        return `
+            <div class="swiper-zoom-container" data-type="gallery" data-url="${img.url}">
+                <div class="gallery-cover-container">
+                    <div class="gallery-cover-title" title="${title}">${title}</div>
+                    ${imageCountDisplay ? `<div class="gallery-image-count" style="font-size: 18px; color: #ccc; margin-top: 3px;">${imageCountDisplay}</div>` : ''}
+                    <a href="${img.url}" target="_blank" class="gallery-cover-link">
+                        <img src="${fullSrc}" alt="${title}" decoding="async" loading="${loading}" />
+                    </a>
+                    ${performerDisplay}
+                </div>
+            </div>`;
+    }
+
+    return `
+        <div class="swiper-zoom-container" data-type="image">
+            <img src="${fullSrc}" alt="${title}" decoding="async" loading="${loading}" 
+                 style="max-width: 100%; height: auto; display: block; margin: 0 auto;" />
+        </div>`;
 }
 
 export async function openDeck(targetImageId = null) {
@@ -348,17 +486,19 @@ export async function openDeck(targetImageId = null) {
         // Add listener for filter updates
 		const filterUpdateListener = (e) => {
 			console.log('[Image Deck] Received updateDeckContent event:', e.detail);
-			// Refresh context to include new filter before updating content
-			storedContextInfo = detectContext();
-			updateDeckContentWithFilter();
+			
+			// Force a complete refresh of gallery covers
+			setTimeout(() => {
+				forceRefreshGalleryCovers();
+			}, 100); // Small delay to ensure session storage is updated
 		};
-				
-        window.addEventListener('updateDeckContent', filterUpdateListener);
-        
-        // Store cleanup function
-        cleanupFunctions.push(() => {
-            window.removeEventListener('updateDeckContent', filterUpdateListener);
-        });
+
+		window.addEventListener('updateDeckContent', filterUpdateListener);
+
+		// Store cleanup function
+		cleanupFunctions.push(() => {
+			window.removeEventListener('updateDeckContent', filterUpdateListener);
+		});
         
         startPerformanceMonitoring();
         

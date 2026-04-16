@@ -28,29 +28,30 @@ export function detectContext() {
             let filters = parseUrlFilters(search);
             
             // Check for tag filter in session storage
-            const tagFilter = sessionStorage.getItem('galleryTagFilter');
-            if (tagFilter) {
-                try {
-                    const tagIds = JSON.parse(tagFilter);
-                    if (tagIds.length > 0) {
-                        // Apply tag filter to context
-                        if (!filters) {
-                            filters = {};
-                        }
-                        // Merge with existing filters instead of overwriting
-                        filters.tags = {
-                            value: tagIds,
-                            modifier: "INCLUDES"
-                        };
-                    }
-                } catch (e) {
-                    console.error('Error parsing tag filter:', e);
-                }
-            }
+			const tagFilter = sessionStorage.getItem('galleryTagFilter');
+			if (tagFilter) {
+				try {
+					const tagIds = JSON.parse(tagFilter);
+					if (tagIds.length > 0) {
+						// Apply tag filter to context
+						if (!filters) {
+							filters = {};
+						}
+						// Merge with existing filters instead of overwriting
+						filters.tags = {
+							value: tagIds,
+							modifier: "INCLUDES"
+						};
+					}
+				} catch (e) {
+					console.error('Error parsing tag filter:', e);
+				}
+			}
             
             return { type: 'galleries', isGalleryListing: true, filter: filters, hash };
         }
     }
+
 
     // 3. Handle /images page (with OR without search params)
     if (path.startsWith('/images')) {

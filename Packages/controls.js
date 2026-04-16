@@ -2,6 +2,7 @@ import { searchTags, applyGalleryTagFilter, clearGalleryTagFilter } from './grap
 import { openMetadataModal, closeMetadataModal } from './metadata.js';
 import { isMobile } from './utils.js';
 import { state } from './state.js';
+import { detectContext } from './context.js';
 
 const elementData = new WeakMap();
 
@@ -346,12 +347,12 @@ export function setupEventHandlers(container, callbacks = {}) {
     setDeckActive(true);
     
     // Listen for filter changes and update content dynamically
-	const filterChangeListener = async (e) => {
-		console.log('[Image Deck] Filter changed, updating content');
-		// Force refresh the context to include new filter
-		storedContextInfo = detectContext();
-		await updateContentViewWithFilter();
-	};
+    const filterChangeListener = async (e) => {
+        console.log('[Image Deck] Filter changed, updating content');
+        // Force refresh the context to include new filter
+        storedContextInfo = detectContext();
+        await updateContentViewWithFilter();
+    };
     
     window.addEventListener('galleryTagFilterChanged', filterChangeListener);
     storeElementData(container, { filterChangeListener });
