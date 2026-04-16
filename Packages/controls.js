@@ -1,5 +1,4 @@
-// controls.js
-import { closeDeck, startAutoPlay, stopAutoPlay, loadNextChunk } from './deck.js';
+
 import { openMetadataModal, closeMetadataModal } from './metadata.js';
 import { isMobile } from './utils.js';
 import { state } from './state.js';
@@ -108,8 +107,38 @@ function updateGalleryStateClass() {
     }
 }
 
+class EventManager {
+    static instance = new EventManager();
+    
+    constructor() {
+        this.handlers = new Map();
+    }
+    
+    static add(element, event, handler, options = false) {
+        const key = `${element.constructor.name}_${event}_${Date.now()}_${Math.random()}`;
+        element.addEventListener(event, handler, options);
+        this.instance.handlers.set(key, { element, event, handler, options });
+        return key;
+    }
+    
+    static remove(key) {
+        if (this.instance.handlers.has(key)) {
+            const { element, event, handler } = this.instance.handlers.get(key);
+            element.removeEventListener(event, handler);
+            this.instance.handlers.delete(key);
+        }
+    }
+    
+    static removeAll() {
+        for (const [key, { element, event, handler }] of this.instance.handlers) {
+            element.removeEventListener(event, handler);
+        }
+        this.instance.handlers.clear();
+    }
+}
 
-export function setupEventHandlers(container) {
+export function setupEventHandlers(container, callbacks = {}) {
+    const { closeDeck, startAutoPlay, stopAutoPlay, loadNextChunk } = callbacks;
     setDeckActive(true);
     
     // Close button

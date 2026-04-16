@@ -31,6 +31,20 @@ export function preloadImage(src, priority = false) {
     });
 }
 
+export function handleError(context, error, fallbackValue = null) {
+    console.error(`[Image Deck] ${context}:`, error);
+    return fallbackValue;
+}
+
+export async function safeFetch(url, options, context) {
+    try {
+        const response = await fetch(url, options);
+        return response;
+    } catch (error) {
+        return handleError(context, error);
+    }
+}
+
 // Export the cache for debugging purposes
 export function getImageCache() {
     return imageCache;

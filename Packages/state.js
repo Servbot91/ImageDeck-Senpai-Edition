@@ -1,29 +1,50 @@
-// state.js
 class ImageDeckState {
     constructor() {
-        this.swiper = null;
-        this.images = [];
-        this.config = null;
-        this.context = null;
-        this.isPlaying = false;
+        this.state = {
+            swiper: null,
+            images: [],
+            config: null,
+            context: null,
+            isPlaying: false,
+            currentChunkPage: 1,
+            chunkSize: 50,
+            totalImageCount: 0,
+            totalPages: 0,
+            pluginConfig: null,
+            autoPlayInterval: null,
+            isAutoPlaying: false,
+            loadingQueue: [],
+            storedContextInfo: null
+        };
         this.eventCallbacks = new Map();
     }
 
+    setState(newState) {
+        this.state = { ...this.state, ...newState };
+    }
+
+    getState() {
+        return { ...this.state };
+    }
+
+    // Individual getters/setters for backward compatibility
     setSwiper(swiper) {
-        this.swiper = swiper;
+        this.setState({ swiper });
     }
 
     getSwiper() {
-        return this.swiper;
+        return this.state.swiper;
     }
 
     setImages(images) {
-        this.images = images;
+        this.setState({ images });
     }
 
     getImages() {
-        return this.images;
+        return this.state.images;
     }
+
+    // ... other getters/setters
 
     on(event, callback) {
         if (!this.eventCallbacks.has(event)) {
@@ -41,4 +62,5 @@ class ImageDeckState {
 }
 
 export const state = new ImageDeckState();
-
+export const getState = () => state.getState();
+export const setState = (newState) => state.setState(newState);

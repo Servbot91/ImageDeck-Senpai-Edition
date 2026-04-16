@@ -36,7 +36,6 @@ function startPerformanceMonitoring() {
         
         if (fps < fpsThreshold) {
             frameDropCount++;
-            // If we're consistently dropping frames, reduce effects
             if (frameDropCount > 5) {
                 reduceVisualEffects();
                 frameDropCount = 0;
@@ -50,7 +49,6 @@ function startPerformanceMonitoring() {
 }
 
 function reduceVisualEffects() {
-    // Dynamically reduce visual effects when performance drops
     const styles = document.getElementById('image-deck-dynamic-styles');
     if (styles) {
         styles.textContent += `
@@ -76,7 +74,6 @@ export async function openDeck(targetImageId = null) {
     console.log('[Image Deck] Current URL:', window.location.pathname);
     
     try {
-        // Reset chunk tracking
         currentChunkPage = 1;
         chunkSize = 50;
         totalImageCount = 0;
@@ -86,19 +83,16 @@ export async function openDeck(targetImageId = null) {
         pluginConfig = await getPluginConfig();
         console.log('[Image Deck] Plugin config loaded:', pluginConfig);
 
-        // Inject dynamic styles
         injectDynamicStyles(pluginConfig);
 
         // 1. Context Detection Logic
         let detectedContext = detectContext();
 
-        // Special handling for performer pages
         const path = window.location.pathname;
         if (path.match(/^\/performers\/\d+/) && !detectedContext) {
             const performerMatch = path.match(/^\/performers\/(\d+)/);
             if (performerMatch) {
                 const performerId = performerMatch[1];
-                // Determine if we're on images or galleries tab
                 const isImagesTab = path.includes('/images') || 
                                    window.location.hash.includes('images') ||
                                    document.querySelector('.nav-tabs .active')?.textContent?.includes('Images');
@@ -131,7 +125,6 @@ export async function openDeck(targetImageId = null) {
             }
         }
 
-        // NEW: Default to galleries when no context is detected
         if (!detectedContext) {
             console.log('[Image Deck] No context detected, defaulting to galleries');
             detectedContext = {
@@ -144,8 +137,6 @@ export async function openDeck(targetImageId = null) {
             };
         }
 
-        // If we are on a gallery listing page, ensure detectContext 
-        // has correctly identified it. If not, we force the refresh here.
         if (window.location.pathname === '/galleries' && !detectedContext?.isGalleryListing) {
             detectedContext = {
                 type: 'galleries',
@@ -170,7 +161,6 @@ export async function openDeck(targetImageId = null) {
             window.location.pathname.startsWith('/images') 
         );
 
-        // If we have a target image ID, prefer visible images to maintain context
         if (targetImageId) {
             console.log('[Image Deck] Using visible images for target navigation');
             imageResult = getVisibleImages();
@@ -244,9 +234,9 @@ export async function openDeck(targetImageId = null) {
             });
         }
         
-        // Restore position or navigate to target image
+
         if (targetImageId) {
-            // Find the index of the target image
+
             const targetIndex = currentImages.findIndex(img => img.id === targetImageId);
             if (targetIndex !== -1) {
                 console.log(`[Image Deck] Navigating to target image at index ${targetIndex}`);
@@ -268,11 +258,15 @@ export async function openDeck(targetImageId = null) {
         updateUI(container);
 
         // Setup event handlers
-        import('./controls.js').then(module => {
-            module.setupEventHandlers(container);
-        });
+		import('./controls.js').then(module => {
+			module.setupEventHandlers(container, {
+				closeDeck,
+				startAutoPlay,
+				stopAutoPlay,
+				loadNextChunk
+			});
+		});
         
-        // Start performance monitoring on mobile
         startPerformanceMonitoring();
         
     } catch (error) {
@@ -281,14 +275,14 @@ export async function openDeck(targetImageId = null) {
     }
 }
 
-// Create the image deck UI
+
 function createDeckUI() {
     const existing = document.querySelector('.image-deck-container');
     if (existing) existing.remove();
 
     const container = document.createElement('div');
     container.className = `image-deck-container${isMobile ? ' mobile-optimized' : ''}`;
-    // Add performance mode class for mobile
+
     if (isMobile) {
         container.classList.add('mobile-performance-mode');
     }
@@ -337,7 +331,6 @@ function createDeckUI() {
     return container;
 }
 
-// Update UI elements - debounced to prevent flicker
 	let uiUpdatePending = false;
 	
 function updateUI(container) {
@@ -345,6 +338,8 @@ function updateUI(container) {
 
     uiUpdatePending = true;
     requestAnimationFrame(() => {
+		const { images: currentImages, totalPages, currentChunkPage } = state.getState();
+        const swiper = state.getSwiper();
         let current = 1;
         const displayedTotal = currentImages.length;
         const actualTotal = totalImageCount || displayedTotal;
@@ -359,11 +354,11 @@ function updateUI(container) {
             if (currentSwiper.params.loop && contextInfo?.isSingleGallery) {
                 // For looped galleries, get the real index
                 const realIndex = currentSwiper.realIndex + 1;
-                // Handle the case where we're at the cloned slides at the beginning/end
+
                 if (realIndex === 0) {
                     current = displayedTotal; // Last slide
                 } else if (realIndex > displayedTotal) {
-                    current = 1; // First slide
+                    current = 1; 
                 } else {
                     current = realIndex;
                 }
@@ -372,7 +367,6 @@ function updateUI(container) {
             }
         }
 
-        // Update counter with chunk info
         if (pluginConfig.showCounter) {
             const counter = container.querySelector('.image-deck-counter');
             const chunkInfo = totalPages > 1 ? ` (chunk ${currentChunkPage}/${totalPages})` : '';
@@ -400,8 +394,6 @@ function checkAndLoadNextChunk() {
     const currentIndex = currentSwiper.activeIndex;
     const totalCurrentSlides = currentImages.length;
     
-    // 1. Only trigger if we are in the last few slides
-    // 2. Only trigger if there actually ARE more pages to fetch
     if (currentIndex >= totalCurrentSlides - 3 && currentChunkPage < totalPages) {
         console.log('[Image Deck] Auto-loading next chunk...');
         loadNextChunk(); 
@@ -427,7 +419,6 @@ export function startAutoPlay() {
         }
     }, pluginConfig.autoPlayInterval);
 
-    // Show speed indicator briefly
     const speedIndicator = document.querySelector('.image-deck-speed');
     if (speedIndicator) {
         speedIndicator.classList.add('visible');
@@ -469,8 +460,6 @@ function restorePosition() {
         }
     }
 }
-
-// Load next chunk of images
 
 let isChunkLoading = false; 
 
@@ -579,7 +568,7 @@ export async function loadNextChunk(container = null) {
                 currentSwiper.virtual.slides = allSlides;
                 currentSwiper.virtual.update(true);
                 
-                // Small timeout to let DOM settle, then force a layout refresh
+
                 setTimeout(() => { if (currentSwiper) currentSwiper.update(); }, 100);
 
             } else {

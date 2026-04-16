@@ -1,4 +1,3 @@
-// Fetch detailed image metadata
 export async function fetchImageMetadata(imageId) {
     const query = `query FindImage($id: ID!) {
         findImage(id: $id) {
@@ -37,17 +36,18 @@ export async function fetchImageMetadata(imageId) {
     }`;
 
     try {
-        const response = await fetch('/graphql', {
+        const response = await safeFetch('/graphql', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ query, variables: { id: imageId } })
-        });
+        }, 'GraphQL fetchImageMetadata');
 
+        if (!response) return null;
+        
         const data = await response.json();
         return data?.data?.findImage || null;
     } catch (error) {
-        console.error('[Image Deck] Error fetching image metadata:', error);
-        return null;
+        return handleError('fetchImageMetadata', error, null);
     }
 }
 
