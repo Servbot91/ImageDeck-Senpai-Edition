@@ -312,6 +312,7 @@ function createDeckUI() {
                 <button class="image-deck-control-btn" data-action="next">▶</button>
                 <button class="image-deck-control-btn image-deck-info-btn" data-action="info" title="Image Info (I)">ℹ</button>
                 <button class="image-deck-control-btn" data-action="next-chunk" title="Load Next Chunk">⏭️</button>
+                <button class="image-deck-control-btn gallery-filter-btn" title="Filter Galleries by Tag">☰</button>
             </div>
         </div>
         <div class="image-deck-speed">Speed: ${pluginConfig.autoPlayInterval}ms</div>

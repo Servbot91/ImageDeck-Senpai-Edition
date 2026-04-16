@@ -139,3 +139,109 @@ export async function searchTags(query) {
         return [];
     }
 }
+
+
+export async function fetchGalleriesByTags(tagIds, page = 1, perPage = 50) {
+    const query = `query FindGalleries($filter: FindFilterType!, $gallery_filter: GalleryFilterType) {
+        findGalleries(filter: $filter, gallery_filter: $gallery_filter) {
+            count
+            galleries {
+                id 
+                title 
+                image_count 
+                cover { 
+                    paths { 
+                        thumbnail 
+                        image 
+                    } 
+                }
+                performers {
+                    id
+                    name
+                }
+                tags {
+                    id
+                    name
+                }
+            }
+        }
+    }`;
+
+    const variables = {
+        filter: { 
+            per_page: perPage, 
+            page: page, 
+            sort: "created_at", 
+            direction: "DESC" 
+        },
+        gallery_filter: {
+            tags: {
+                value: tagIds,
+                modifier: "INCLUDES"
+            }
+        }
+    };
+
+    try {
+        const response = await fetch('/graphql', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query, variables })
+        });
+
+        const data = await response.json();
+        return data?.data?.findGalleries || { count: 0, galleries: [] };
+    } catch (error) {
+        console.error('[Image Deck] Error fetching galleries by tags:', error);
+        return { count: 0, galleries: [] };
+    }
+}
+
+// Add this helper to handle the filtering
+export async function applyGalleryTagFilter(tagIds) {
+    // Store filter in session storage
+    sessionStorage.setItem('galleryTagFilter', JSON.stringify(tagIds));
+    
+    // Redirect to filtered view or refresh current view
+    if (window.location.pathname === '/galleries') {
+        // Refresh current page with filter applied
+        window.location.reload();
+    } else {
+        // Navigate to galleries page with filter
+        window.location.href = '/galleries';
+    }
+}
+
+export function clearGalleryTagFilter() {
+    sessionStorage.removeItem('galleryTagFilter');
+    if (window.location.pathname === '/galleries') {
+        window.location.reload();
+    }
+}
+
+// Enhanced version of detectContext to handle tag filtering
+export function detectContextWithFilter() {
+    const baseContext = detectContext();
+    
+    // Check for tag filter in session storage
+    const tagFilter = sessionStorage.getItem('galleryTagFilter');
+    if (tagFilter) {
+        try {
+            const tagIds = JSON.parse(tagFilter);
+            if (tagIds.length > 0) {
+                // Apply tag filter to context
+                if (!baseContext.filter) {
+                    baseContext.filter = {};
+                }
+                baseContext.filter.tags = {
+                    value: tagIds,
+                    modifier: "INCLUDES"
+                };
+            }
+        } catch (e) {
+            console.error('Error parsing tag filter:', e);
+        }
+    }
+    
+    return baseContext;
+}

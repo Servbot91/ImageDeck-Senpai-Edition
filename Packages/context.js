@@ -12,23 +12,44 @@ export function detectContext() {
     }
 
     // 2. Check for Gallery Contexts
-	if (path.startsWith('/galleries')) {
-		const galleryIdMatch = path.match(/^\/galleries\/(\d+)/);
-		const params = new URLSearchParams(search);
-		
-		if (galleryIdMatch) {
-			const filter = parseUrlFilters(search);
-			// For single gallery views, if no sort is specified, default to title asc
-			if (!params.get('sortby') && !params.get('sortdir')) {
-				filter.sortBy = 'title';
-				filter.sortDir = 'asc';
-			}
-			return { type: 'galleries', id: galleryIdMatch[1], hash, isSingleGallery: true, filter };
-		} else {
-			const filters = parseUrlFilters(search);
-			return { type: 'galleries', isGalleryListing: true, filter: filters, hash };
-		}
-	}
+    if (path.startsWith('/galleries')) {
+        const galleryIdMatch = path.match(/^\/galleries\/(\d+)/);
+        const params = new URLSearchParams(search);
+        
+        if (galleryIdMatch) {
+            const filter = parseUrlFilters(search);
+            // For single gallery views, if no sort is specified, default to title asc
+            if (!params.get('sortby') && !params.get('sortdir')) {
+                filter.sortBy = 'title';
+                filter.sortDir = 'asc';
+            }
+            return { type: 'galleries', id: galleryIdMatch[1], hash, isSingleGallery: true, filter };
+        } else {
+            let filters = parseUrlFilters(search);
+            
+            // Check for tag filter in session storage
+            const tagFilter = sessionStorage.getItem('galleryTagFilter');
+            if (tagFilter) {
+                try {
+                    const tagIds = JSON.parse(tagFilter);
+                    if (tagIds.length > 0) {
+                        // Apply tag filter to context
+                        if (!filters) {
+                            filters = {};
+                        }
+                        filters.tags = {
+                            value: tagIds,
+                            modifier: "INCLUDES"
+                        };
+                    }
+                } catch (e) {
+                    console.error('Error parsing tag filter:', e);
+                }
+            }
+            
+            return { type: 'galleries', isGalleryListing: true, filter: filters, hash };
+        }
+    }
 
     // 3. Handle /images page (with OR without search params)
     if (path.startsWith('/images')) {
@@ -193,21 +214,21 @@ export async function fetchContextImages(context, page = 1, perPage = 50) {
     // 1. Determine Query - Add performer and tag data for filtering
     let query = '';
     if (isFetchingGalleries) {
-		query = `query FindGalleries($filter: FindFilterType!, $gallery_filter: GalleryFilterType) {
-			findGalleries(filter: $filter, gallery_filter: $gallery_filter) {
-				count
-				galleries {
-					id title image_count cover { paths { thumbnail image } }
-					performers {
-						id
-						name
-					}
-					tags {
-						id
-					}
-				}
-			}
-		}`;
+        query = `query FindGalleries($filter: FindFilterType!, $gallery_filter: GalleryFilterType) {
+            findGalleries(filter: $filter, gallery_filter: $gallery_filter) {
+                count
+                galleries {
+                    id title image_count cover { paths { thumbnail image } }
+                    performers {
+                        id
+                        name
+                    }
+                    tags {
+                        id
+                    }
+                }
+            }
+        }`;
     } else {
         query = `query FindImages($filter: FindFilterType!, $image_filter: ImageFilterType) {
             findImages(filter: $filter, image_filter: $image_filter) {
@@ -356,16 +377,16 @@ export async function fetchContextImages(context, page = 1, perPage = 50) {
                 totalCount = result.galleries.length;
             }
             
-			normalizedImages = (result?.galleries || []).map(gallery => ({
-				id: gallery.id,
-				title: gallery.title,
-				image_count: gallery.image_count,
-				performers: gallery.performers || [], 
-				isGallery: true,
-				type: 'gallery',
-				paths: { image: gallery.cover?.paths?.image || gallery.cover?.paths?.thumbnail || '' },
-				url: `/galleries/${gallery.id}`
-			}));
+            normalizedImages = (result?.galleries || []).map(gallery => ({
+                id: gallery.id,
+                title: gallery.title,
+                image_count: gallery.image_count,
+                performers: gallery.performers || [], 
+                isGallery: true,
+                type: 'gallery',
+                paths: { image: gallery.cover?.paths?.image || gallery.cover?.paths?.thumbnail || '' },
+                url: `/galleries/${gallery.id}`
+            }));
         } else {
             let result = data?.data?.findImages;
             totalCount = result?.count || 0;
@@ -383,7 +404,7 @@ export async function fetchContextImages(context, page = 1, perPage = 50) {
                                     excludedIds.includes(fieldItem.id)
                                 );
                                 
-								if (hasExcludedItem) {
+                                if (hasExcludedItem) {
                                     return false;
                                 }
                             }

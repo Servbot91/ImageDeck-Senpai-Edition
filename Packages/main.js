@@ -1,3 +1,4 @@
+// main.js
 import { initialize, initPlugin } from './ui.js';
 import './styles.css';
 
@@ -31,6 +32,15 @@ function handleNavigation() {
         existingDeck.remove();
         document.body.classList.remove('image-deck-open');
     }
+    
+    // Add gallery filter button when navigating to gallery pages
+    if (window.location.pathname === '/galleries') {
+        setTimeout(() => {
+            import('./ui.js').then(module => {
+                module.addGalleryFilterButton();
+            });
+        }, 100);
+    }
 }
 
 // Enhance history methods to detect SPA navigations
@@ -39,16 +49,18 @@ const originalReplaceState = history.replaceState;
 
 history.pushState = function() {
     originalPushState.apply(history, arguments);
-    handleNavigation();
+    setTimeout(handleNavigation, 100);
 };
 
 history.replaceState = function() {
     originalReplaceState.apply(history, arguments);
-    handleNavigation();
+    setTimeout(handleNavigation, 100);
 };
 
 // Listen for back/forward navigation
-window.addEventListener('popstate', handleNavigation);
+window.addEventListener('popstate', () => {
+    setTimeout(handleNavigation, 100);
+});
 
 // Polling fallback (only if necessary for specific router implementations)
 setInterval(handleNavigation, 500);
