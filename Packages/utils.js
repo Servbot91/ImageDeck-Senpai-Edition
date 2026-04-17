@@ -2,8 +2,6 @@
 export const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
                      window.innerWidth < 768 ||
                      ('ontouchstart' in window);
-
-
 class LRUCache {
     constructor(maxSize = 20, ttl = 5 * 60 * 1000) { 
         this.maxSize = maxSize;

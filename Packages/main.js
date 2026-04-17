@@ -1,8 +1,5 @@
-// main.js
 import { initialize } from './ui.js';
 import './styles.css';
-
-// Initialize app once DOM is ready
 function initApp() {
     initialize();
 }
@@ -12,17 +9,10 @@ if (document.readyState === 'loading') {
 } else {
     initApp();
 }
-
-// Track last known URL to detect navigation changes
 let lastUrl = location.href;
-
-// Centralized navigation handler
 function handleNavigation() {
-    // Avoid redundant processing
     if (lastUrl === location.href) return;
     lastUrl = location.href;
-
-    // Clean up previous UI elements
     const existingButton = document.querySelector('.image-deck-launch-btn');
     if (existingButton) existingButton.remove();
 
@@ -31,12 +21,8 @@ function handleNavigation() {
         existingDeck.remove();
         document.body.classList.remove('image-deck-open');
     }
-    
-    // The gallery filter button is already part of the deck UI, so no need to add it separately
-    // The functionality is accessed through the gallery filter button in the deck controls
 }
 
-// Enhance history methods to detect SPA navigations
 const originalPushState = history.pushState;
 const originalReplaceState = history.replaceState;
 
@@ -50,10 +36,7 @@ history.replaceState = function() {
     setTimeout(handleNavigation, 100);
 };
 
-// Listen for back/forward navigation
 window.addEventListener('popstate', () => {
     setTimeout(handleNavigation, 100);
 });
-
-// Polling fallback (only if necessary for specific router implementations)
 setInterval(handleNavigation, 500);

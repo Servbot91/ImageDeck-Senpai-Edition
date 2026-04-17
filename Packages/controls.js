@@ -113,21 +113,16 @@ function updateControlVisibility(isVisible = true) {
 function isCurrentSlideGallery() {
     const swiper = state.getSwiper();
     if (!swiper) return false;
-    
-    // Get the current image data for the active slide
     const currentIndex = swiper.activeIndex;
     const currentImages = window.currentImages || [];
     
     if (currentIndex < currentImages.length) {
         const currentImage = currentImages[currentIndex];
-        // Check if this is a gallery based on the image data
         if (currentImage) {
-            // Gallery images typically have a url property and image_count
             return !!(currentImage.url && currentImage.image_count !== undefined);
         }
     }
-    
-    // Fallback to DOM inspection
+
     const activeSlide = swiper.slides[swiper.activeIndex];
     if (activeSlide) {
         const zoomContainer = activeSlide.querySelector('.swiper-zoom-container');
@@ -183,13 +178,11 @@ class EventManager {
 }
 
 function showGalleryTagFilter() {
-    // Remove existing modal if present
     const existingModal = document.querySelector('.gallery-tag-filter-modal');
     if (existingModal) {
         existingModal.remove();
     }
     
-    // Create modal for tag selection with styling matching image details modal
     const modal = document.createElement('div');
     modal.className = 'gallery-tag-filter-modal image-deck-metadata-modal';
     modal.style.cssText = `
@@ -238,13 +231,11 @@ function showGalleryTagFilter() {
     
     document.body.appendChild(modal);
     
-    // Add close functionality
     const closeBtn = modal.querySelector('.close-filter-modal');
     closeBtn.addEventListener('click', () => {
         modal.remove();
     });
     
-    // Close on Escape key
     const escapeHandler = (e) => {
         if (e.key === 'Escape') {
             modal.remove();
@@ -253,30 +244,24 @@ function showGalleryTagFilter() {
     };
     document.addEventListener('keydown', escapeHandler);
     
-    // Close on click outside
     modal.addEventListener('click', (e) => {
         if (e.target === modal) {
             modal.remove();
         }
     });
-    
-    // Setup tag search and selection
+	
     const includedSearchInput = modal.querySelector('.included-tag-search');
     const excludedSearchInput = modal.querySelector('.excluded-tag-search');
     const includedTagList = modal.querySelector('.included-tag-list');
     const excludedTagList = modal.querySelector('.excluded-tag-list');
     let includedTags = [];
     let excludedTags = [];
-    
-    // NEW: Define the setupTagSearch function here
     function setupTagSearch(inputElement, tagListContainer, selectedTags, type) {
         let searchTimeout;
         
         inputElement.addEventListener('input', async (e) => {
             clearTimeout(searchTimeout);
             const query = e.target.value.trim();
-            
-            // Even with 1 character, try to search (more permissive)
             if (query.length >= 1) {
                 searchTimeout = setTimeout(async () => {
                     try {
@@ -286,22 +271,19 @@ function showGalleryTagFilter() {
                         console.error('Error searching tags:', error);
                         tagListContainer.innerHTML = '<div style="color: #ff6b6b; padding: 8px;">Error loading tags</div>';
                     }
-                }, 300); // Keep the debounce but be more responsive
+                }, 300); 
             } else {
                 tagListContainer.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type to search tags</div>';
             }
         });
     }
-    
-    // Load currently applied tags if any
+
     const currentFilter = sessionStorage.getItem('galleryTagFilter');
     if (currentFilter) {
         try {
             const filterObj = JSON.parse(currentFilter);
             includedTags = filterObj.included || [];
             excludedTags = filterObj.excluded || [];
-            
-            // Update the UI to reflect current selections
             setTimeout(() => {
                 if (includedSearchInput.value.trim().length >= 1) {
                     includedSearchInput.dispatchEvent(new Event('input'));
@@ -318,7 +300,6 @@ function showGalleryTagFilter() {
     setupTagSearch(includedSearchInput, includedTagList, includedTags, 'included');
     setupTagSearch(excludedSearchInput, excludedTagList, excludedTags, 'excluded');    
     
-    // Trigger initial search if there's text
     if (includedSearchInput.value.trim().length >= 1) {
         includedSearchInput.dispatchEvent(new Event('input'));
     } else {
@@ -331,19 +312,15 @@ function showGalleryTagFilter() {
         excludedTagList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type to search tags</div>';
     }
     
-    // Apply filter button
     const applyBtn = modal.querySelector('.apply-tag-filter');
     applyBtn.addEventListener('click', () => {
         if (includedTags.length > 0 || excludedTags.length > 0) {
             applyGalleryTagFilter(includedTags, excludedTags);
         } else {
-            // Clear filter if no tags selected
             clearGalleryTagFilter();
         }
         modal.remove();
     });
-    
-    // Clear filter button
     const clearBtn = modal.querySelector('.clear-tag-filter');
     clearBtn.addEventListener('click', () => {
         includedTags = [];
@@ -356,7 +333,6 @@ function showGalleryTagFilter() {
     });
 }
 
-// Update renderTagList to support included/excluded distinction
 function renderTagList(tags, container, selectedTags, type) {
     if (!tags || tags.length === 0) {
         container.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">No tags found</div>';
@@ -369,28 +345,21 @@ function renderTagList(tags, container, selectedTags, type) {
             <label for="tag-${type}-${tag.id}" style="cursor: pointer; flex-grow: 1;">${tag.name}</label>
         </div>
     `).join('');
-    
-    // Add event listeners
     container.querySelectorAll('.tag-item').forEach((item, index) => {
         const checkbox = item.querySelector('input[type="checkbox"]');
         const tagId = tags[index].id;
-        
-        // Click on entire item toggles checkbox
         item.addEventListener('click', (e) => {
             if (e.target !== checkbox) {
                 checkbox.checked = !checkbox.checked;
                 updateSelectedTags(selectedTags, tagId, checkbox.checked);
             }
         });
-        
-        // Direct checkbox change
         checkbox.addEventListener('change', (e) => {
             updateSelectedTags(selectedTags, tagId, e.target.checked);
         });
     });
 }
 
-// Update updateSelectedTags to work with the appropriate tag list
 function updateSelectedTags(selectedTags, tagId, isSelected) {
     if (isSelected) {
         if (!selectedTags.includes(tagId)) {
@@ -415,8 +384,6 @@ async function updateContentViewWithFilter() {
             console.error('Error parsing tag filter:', e);
         }
     }
-    
-    // Emit custom event that deck.js can listen to
     window.dispatchEvent(new CustomEvent('updateDeckContent', { 
         detail: { tagIds } 
     }));
@@ -438,39 +405,27 @@ function getCurrentFilterTags() {
 export function setupEventHandlers(container, callbacks = {}) {
     const { closeDeck, startAutoPlay, stopAutoPlay, loadNextChunk } = callbacks;
     setDeckActive(true);
-    
-    // Listen for filter changes and update content dynamically
     const filterChangeListener = async (e) => {
         console.log('[Image Deck] Filter changed, updating content');
-        // Force refresh the context to include new filter
         storedContextInfo = detectContext();
         await updateContentViewWithFilter();
     };
     
     window.addEventListener('galleryTagFilterChanged', filterChangeListener);
     storeElementData(container, { filterChangeListener });
-    
-    // Store the keyboard handler reference so we can remove it later
     const keyboardHandler = handleKeyboard;
-    
-    // Close button
     const closeBtn = container.querySelector('.image-deck-close');
     if (closeBtn) {
         eventManager.add(closeBtn, 'click', closeDeck);
     }
-    
-    // Fullscreen button
     const fullscreenBtn = container.querySelector('.image-deck-fullscreen');
     if (fullscreenBtn) {
         eventManager.add(fullscreenBtn, 'click', toggleFullscreen);
     }
-
-    // Metadata modal close button - THIS IS THE KEY PART
     const metadataCloseBtn = container.querySelector('.image-deck-metadata-close');
     if (metadataCloseBtn) {
         eventManager.add(metadataCloseBtn, 'click', () => {
             closeMetadataModal();
-            // Show controls when metadata modal is closed
             updateControlVisibility(true);
         });
     }
@@ -479,16 +434,12 @@ export function setupEventHandlers(container, callbacks = {}) {
     if (galleryFilterBtn) {
         eventManager.add(galleryFilterBtn, 'click', showGalleryTagFilter);
     }
-    
-    // Control buttons
     const controlButtons = container.querySelectorAll('.image-deck-control-btn');
 
     controlButtons.forEach(button => {
         eventManager.add(button, 'click', (e) => {
             const action = button.dataset.action;
             const swiper = state.getSwiper();
-
-            // Handle gallery filter button 
             if (button.classList.contains('gallery-filter-btn')) {
                 showGalleryTagFilter();
                 return;
@@ -524,7 +475,6 @@ export function setupEventHandlers(container, callbacks = {}) {
                     }
                     break;
                 case 'info':
-                    // Hide all controls when info button is clicked
                     updateControlVisibility(false);
                     openMetadataModal();
                     break;
@@ -545,9 +495,8 @@ export function setupEventHandlers(container, callbacks = {}) {
                     console.log('[Image Deck] Unknown action:', action);
             }
         });
-    }); // End of controlButtons.forEach
+    }); 
 
-    // Handle remove filter tag buttons - moved outside the controlButtons loop
     const removeTagButtons = container.querySelectorAll('.remove-filter-tag');
     removeTagButtons.forEach(button => {
         eventManager.add(button, 'click', async (e) => {
@@ -561,8 +510,6 @@ export function setupEventHandlers(container, callbacks = {}) {
             } else {
                 sessionStorage.removeItem('galleryTagFilter');
             }
-            
-            // Notify about filter change
             window.dispatchEvent(new CustomEvent('galleryTagFilterChanged'));
         });
     });
@@ -601,8 +548,6 @@ function setupSwipeGestures(container, eventManager) {
     
     const swiperEl = container.querySelector('.image-deck-swiper');
     if (!swiperEl) return;
-
-    // Single consolidated touch handler
     const touchHandler = {
         handleTouchStart: (e) => {
             if (isProcessingTouch || e.touches.length > 1) return;
@@ -612,8 +557,6 @@ function setupSwipeGestures(container, eventManager) {
             const currentTime = new Date().getTime();
             const touchX = e.touches[0].clientX;
             const touchY = e.touches[0].clientY;
-            
-            // Handle double tap for zoom
             if (currentTime - lastTouchTime < 300 && 
                 Math.abs(touchX - lastTouchX) < 20 && 
                 Math.abs(touchY - lastTouchY) < 20) {
@@ -647,8 +590,6 @@ function setupSwipeGestures(container, eventManager) {
             touchDeltaX = Math.abs(currentX - touchStartX);
             
             const isInFullscreen = !!document.fullscreenElement;
-            
-            // Only apply vertical swipe gesture outside of swiper zoom container
             if (!isInFullscreen && touchDeltaY > 30 && touchDeltaX < 50) {
                 if (rafId) cancelAnimationFrame(rafId);
                 rafId = requestAnimationFrame(() => {
@@ -679,13 +620,11 @@ function setupSwipeGestures(container, eventManager) {
         }
     };
 
-    // Attach single event listeners
     eventManager.add(swiperEl, 'touchstart', touchHandler.handleTouchStart, { passive: false });
     eventManager.add(swiperEl, 'touchmove', touchHandler.handleTouchMove, { passive: true });
     eventManager.add(swiperEl, 'touchend', touchHandler.handleTouchEnd, { passive: true });
 }
 
-// Double tap zoom handling
 function handleDoubleTapZoom(event, container) {
     const swiper = state.getSwiper();
     if (!swiper || !swiper.zoom) return;
@@ -744,13 +683,11 @@ function handleKeyboard(e, actions = {}) {
     
     if (!isDeckActive) return;
     
-    // Check if we're in a modal input field
     const inModalInput = (e.target.closest('.gallery-tag-filter-modal') || e.target.closest('.image-deck-metadata-modal')) && 
                         (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA');
     
-    // Allow spacebar in modal inputs
     if (inModalInput && e.key === ' ') {
-        return; // Let the input handle spacebar normally
+        return; 
     }
     
     if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' ', 'Escape', '+', '-', '0'].includes(e.key)) {
@@ -759,8 +696,6 @@ function handleKeyboard(e, actions = {}) {
     }
     
     const swiper = state.getSwiper();
-    
-    // Check if we're in ANY input or textarea field
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
         if (e.key === 'Escape') {
             closeMetadataModal();
@@ -796,7 +731,6 @@ function handleKeyboard(e, actions = {}) {
             if (metadataModal && metadataModal.classList.contains('active')) {
                 closeMetadataModal();
             } else {
-                // Hide controls when opening metadata modal via keyboard
                 updateControlVisibility(false);
                 openMetadataModal();
             }
@@ -846,18 +780,12 @@ function handleKeyboard(e, actions = {}) {
     }
 }
 
-// Cleanup function to remove event listeners
 export function cleanupEventHandlers() {
     eventManager.removeAll();
     isDeckActive = false;
-    
-    // Remove global keyboard handler specifically
     document.removeEventListener('keydown', handleKeyboard, true);
-    
     const swiper = state.getSwiper();
     if (swiper) {
-        // Remove swiper event listeners
         swiper.off('slideChangeTransitionEnd');
-        // Remove any other swiper listeners you've added
     }
 }

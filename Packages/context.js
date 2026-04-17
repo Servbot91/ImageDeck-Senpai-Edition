@@ -21,27 +21,22 @@ export function detectContext() {
     const path = window.location.pathname;
     const hash = window.location.hash;
     const search = window.location.search;
-
-    // 1. Check for individual image page
     const imageIdMatch = path.match(/^\/images\/(\d+)$/);
     if (imageIdMatch) {
         return { type: 'images', id: imageIdMatch[1], hash, isSingleImage: true };
     }
 
-    // 2. Handle performer pages with explicit gallery/image tabs
     const performerMatch = path.match(/^\/performers\/(\d+)(?:\/(galleries|images))?/);
     if (performerMatch) {
         const [, performerId, tab] = performerMatch;
         
-        // Determine which tab is active
-        let activeTab = 'images'; // default to images
+        let activeTab = 'images'; 
         
         if (tab === 'galleries' || path.includes('/galleries')) {
             activeTab = 'galleries';
         } else if (tab === 'images' || path.includes('/images')) {
             activeTab = 'images';
         } else {
-            // Check hash or active tab in UI
             const isGalleriesTab = hash.includes('galleries') ||
                                   document.querySelector('.nav-tabs .active')?.textContent?.includes('Galleries');
             const isImagesTab = hash.includes('images') ||
@@ -54,12 +49,10 @@ export function detectContext() {
             }
         }
 
-        // Create filter for performer
         const filter = {
             performers: { value: [performerId], modifier: "INCLUDES" }
         };
 
-        // Parse sort parameters from URL
         const params = new URLSearchParams(search);
         if (params.has('sortby')) {
             filter.sortBy = params.get('sortby');
@@ -78,14 +71,12 @@ export function detectContext() {
         };
     }
 
-    // 3. Check for Gallery Contexts (including root galleries)
 	if (path.startsWith('/galleries')) {
 		const galleryIdMatch = path.match(/^\/galleries\/(\d+)/);
 		const params = new URLSearchParams(search);
 		
 		if (galleryIdMatch) {
 			const filter = parseUrlFilters(search);
-			// For single gallery views, if no sort is specified, default to title asc
 			if (!params.get('sortby') && !params.get('sortdir')) {
 				filter.sortBy = 'title';
 				filter.sortDir = 'asc';
@@ -94,25 +85,21 @@ export function detectContext() {
 		} else {
 			let filters = parseUrlFilters(search);
 			
-			// Check for tag filter in session storage
 			const tagFilter = sessionStorage.getItem('galleryTagFilter');
 			if (tagFilter) {
 				try {
 					const filterObj = JSON.parse(tagFilter);
 					if ((filterObj.included && filterObj.included.length > 0) || 
 						(filterObj.excluded && filterObj.excluded.length > 0)) {
-						// Apply tag filter to context
 						if (!filters) {
 							filters = {};
 						}
-						// Add included tags
 						if (filterObj.included.length > 0) {
 							filters.tags = {
 								value: filterObj.included,
 								modifier: "INCLUDES"
 							};
 						}
-						// Add excluded tags using the correct structure
 						if (filterObj.excluded.length > 0) {
 							if (filters.tags) {
 								filters.tags.excluded = filterObj.excluded;
@@ -134,19 +121,17 @@ export function detectContext() {
 		}
 	}
 
-    // 4. Handle /images page (with OR without search params)
     if (path.startsWith('/images')) {
         const filters = parseUrlFilters(search);
         return {
             type: 'images',
-            isFilteredView: !!search, // true if there are any search params
-            isGeneralListing: !search, // true if it's just the base /images page
+            isFilteredView: !!search, 
+            isGeneralListing: !search, 
             filter: filters,
             hash: hash
         };
     }
 
-    // 5. Handle path-based patterns (Performers, Tags, etc.) - existing code
     const idMatch = path.match(/\/(\w+)\/(\d+)/);
     if (idMatch) {
         const [, type, id] = idMatch;
@@ -154,7 +139,6 @@ export function detectContext() {
                            document.querySelector('.nav-tabs .active')?.textContent?.includes('Images');
 
         if (isImagesTab || type === 'galleries') {
-            // Mapping common types to what the GraphQL image_filter expects
             const filter = {};
             if (type === 'performers') filter.performers = { value: [id], modifier: "INCLUDES" };
             if (type === 'tags') filter.tags = { value: [id], modifier: "INCLUDES" };
@@ -164,7 +148,6 @@ export function detectContext() {
         }
     }
 
-    // 6. Fallback: If we see images, at least try to paginate the general list
     if (document.querySelectorAll('img[src*="/image/"]').length > 0) {
         return {
             type: 'images',
@@ -177,13 +160,10 @@ export function detectContext() {
     return null;
 }
 
-// Get visible images from current page
 export function getVisibleImages() {
     const images = [];
     const imageGrid = document.querySelector('.main-content, [role="main"]') || document.body;
     const imageElements = imageGrid.querySelectorAll('.image-card img, .grid-card img');
-
-    // Convert NodeList to Array to preserve order
     const imageArray = Array.from(imageElements);
 
     imageArray.forEach((img, index) => {
@@ -199,7 +179,6 @@ export function getVisibleImages() {
                 ? img.src.replace('/thumbnail/', '/image/')
                 : img.src;
 
-            // Find the preview button associated with this image
             const card = img.closest('.image-card, .grid-card');
             const previewButton = card?.querySelector('.preview-button');
 
@@ -209,7 +188,6 @@ export function getVisibleImages() {
                 paths: {
                     image: fullImageUrl
                 },
-                // Store reference to preview button
                 previewButton: previewButton
             });
         }
@@ -218,17 +196,14 @@ export function getVisibleImages() {
     return images;
 }
 
-// Get visible gallery covers from current page
 export function getVisibleGalleryCovers() {
     const galleries = [];
-    // Target only the main gallery grid
     const galleryGrid = document.querySelector('.main-content, [role="main"]') || document.body;
     const galleryElements = galleryGrid.querySelectorAll('.gallery-card, .card');
 
     galleryElements.forEach((card, index) => {
         const coverImg = card.querySelector('.gallery-cover img, img');
         if (coverImg && coverImg.src) {
-            // Extract gallery ID from the parent link or card
             let id = `gallery_${index}`;
             let url = null;
             const link = card.querySelector('a[href*="/galleries/"]');
@@ -258,7 +233,6 @@ export async function fetchContextImages(context, page = 1, perPage = 50) {
     const { type, id, filter, isSingleGallery, isGalleryListing } = context;
     const isFetchingGalleries = isGalleryListing || (type === 'galleries' && !isSingleGallery);
 
-    // 1. Determine Query - Add performer and tag data for filtering
     let query = '';
     if (isFetchingGalleries) {
         query = `query FindGalleries($filter: FindFilterType!, $gallery_filter: GalleryFilterType) {
@@ -293,15 +267,13 @@ export async function fetchContextImages(context, page = 1, perPage = 50) {
         }`;
     }
 
-    // 2. Build the active filter object and collect exclusions
     let activeFilter = {};
-    let exclusions = {}; // Store all exclusions by type
+    let exclusions = {}; 
     
     if (isSingleGallery && id) {
         activeFilter = { galleries: { value: [id], modifier: "INCLUDES" } };
     } else if (filter) {
         if (isFetchingGalleries) {
-            // Gallery-specific allowed fields
             const galleryAllowedFields = [
                 'tags', 'performers', 'studios', 'markers', 
                 'rating100', 'organized', 'is_missing', 'image_count',
@@ -310,10 +282,8 @@ export async function fetchContextImages(context, page = 1, perPage = 50) {
             
             galleryAllowedFields.forEach(field => {
                 if (filter[field]) {
-                    // Handle exclusions for any field type
                     if (filter[field].excluded && filter[field].excluded.length > 0) {
                         exclusions[field] = filter[field].excluded;
-                        // Still apply the main filter if there are positive includes
                         if (filter[field].value && filter[field].value.length > 0) {
                             activeFilter[field] = {
                                 value: filter[field].value,
@@ -321,7 +291,6 @@ export async function fetchContextImages(context, page = 1, perPage = 50) {
                             };
                         }
                     } else {
-                        // Handle other fields normally
                         activeFilter[field] = {
                             value: filter[field].value,
                             modifier: filter[field].modifier
@@ -330,7 +299,6 @@ export async function fetchContextImages(context, page = 1, perPage = 50) {
                 }
             });
         } else {
-            // Image-specific allowed fields
             const imageAllowedFields = [
                 'tags', 'performers', 'studios', 'markers', 'galleries', 
                 'path', 'rating100', 'organized', 'is_missing'
@@ -338,10 +306,8 @@ export async function fetchContextImages(context, page = 1, perPage = 50) {
             
             imageAllowedFields.forEach(field => {
                 if (filter[field]) {
-                    // Handle exclusions for any field type
                     if (filter[field].excluded && filter[field].excluded.length > 0) {
                         exclusions[field] = filter[field].excluded;
-                        // Still apply the main filter if there are positive includes
                         if (filter[field].value && filter[field].value.length > 0) {
                             activeFilter[field] = {
                                 value: filter[field].value,
@@ -359,7 +325,6 @@ export async function fetchContextImages(context, page = 1, perPage = 50) {
         }
     }
 
-    // 3. Prepare GraphQL Variables
     const variables = {
         filter: { 
             per_page: perPage, 
@@ -369,14 +334,12 @@ export async function fetchContextImages(context, page = 1, perPage = 50) {
         }
     };
 
-    // Assign to the correct GraphQL key based on context
     if (isFetchingGalleries) {
         variables.gallery_filter = activeFilter;
     } else {
         variables.image_filter = activeFilter;
     }
 
-    // 4. Execute Fetch
     try {
         const response = await fetch('/graphql', {
             method: 'POST',
@@ -398,15 +361,11 @@ export async function fetchContextImages(context, page = 1, perPage = 50) {
             let result = data?.data?.findGalleries;
             totalCount = result?.count || 0;
             
-            // Apply client-side filtering for all exclusions
             if (Object.keys(exclusions).length > 0 && result?.galleries) {
                 result.galleries = result.galleries.filter(item => {
-                    // Check each exclusion type
                     for (const [fieldType, excludedIds] of Object.entries(exclusions)) {
                         if (excludedIds.length > 0) {
-                            // Check if item has the field and any excluded values
                             if (item[fieldType] && item[fieldType].length > 0) {
-                                // Check if any item in the field is in the exclusion list
                                 const hasExcludedItem = item[fieldType].some(fieldItem => 
                                     excludedIds.includes(fieldItem.id)
                                 );
@@ -419,8 +378,7 @@ export async function fetchContextImages(context, page = 1, perPage = 50) {
                     }
                     return true; 
                 });
-                
-                // Update count after filtering
+
                 totalCount = result.galleries.length;
             }
             
@@ -438,15 +396,11 @@ export async function fetchContextImages(context, page = 1, perPage = 50) {
             let result = data?.data?.findImages;
             totalCount = result?.count || 0;
             
-            // Apply client-side filtering for all exclusions
             if (Object.keys(exclusions).length > 0 && result?.images) {
                 result.images = result.images.filter(item => {
-                    // Check each exclusion type
                     for (const [fieldType, excludedIds] of Object.entries(exclusions)) {
                         if (excludedIds.length > 0) {
-                            // Check if item has the field and any excluded values
                             if (item[fieldType] && item[fieldType].length > 0) {
-                                // Check if any item in the field is in the exclusion list
                                 const hasExcludedItem = item[fieldType].some(fieldItem => 
                                     excludedIds.includes(fieldItem.id)
                                 );
@@ -460,7 +414,6 @@ export async function fetchContextImages(context, page = 1, perPage = 50) {
                     return true; 
                 });
                 
-                // Update count after filtering
                 totalCount = result.images.length;
             }
             

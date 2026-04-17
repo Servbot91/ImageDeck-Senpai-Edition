@@ -27,7 +27,6 @@ class ImageDeckState {
         return { ...this.state };
     }
 
-    // Individual getters/setters for backward compatibility
     setSwiper(swiper) {
         this.setState({ swiper });
     }
@@ -43,8 +42,6 @@ class ImageDeckState {
     getImages() {
         return this.state.images;
     }
-
-    // ... other getters/setters
 
     on(event, callback) {
         if (!this.eventCallbacks.has(event)) {

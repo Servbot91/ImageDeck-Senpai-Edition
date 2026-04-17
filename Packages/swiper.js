@@ -1,4 +1,3 @@
-// swiper.js
 import { GALLERY_ICON_SVG } from './constants.js';
 import { state } from './state.js';
 
@@ -15,7 +14,6 @@ export function getEffectOptions(effect, pluginConfig) {
     const configFn = EFFECT_CONFIGS[effect] || EFFECT_CONFIGS.default;
     return configFn(pluginConfig.effectDepth);
 }
-
 
 const memoizedGetSlideTemplate = (() => {
     const cache = new Map();

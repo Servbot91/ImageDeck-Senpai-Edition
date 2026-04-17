@@ -115,7 +115,6 @@ export async function updateGalleryPerformers(galleryId, performerIds) {
     }
 }
 
-// Add searchPerformers function (similar to searchTags)
 export async function searchPerformers(query) {
     const gql = `query FindPerformers($filter: FindFilterType, $performer_filter: PerformerFilterType) {
         findPerformers(filter: $filter, performer_filter: $performer_filter) {
@@ -302,7 +301,6 @@ export async function fetchImageMetadata(imageId) {
     }
 }
 
-// Update image metadata
 export async function updateImageMetadata(imageId, updates) {
     const mutation = `mutation ImageUpdate($input: ImageUpdateInput!) {
         imageUpdate(input: $input) {
@@ -331,7 +329,6 @@ export async function updateImageMetadata(imageId, updates) {
     }
 }
 
-// Add/remove tags from image
 export async function updateImageTags(imageId, tagIds) {
     const mutation = `mutation ImageUpdate($input: ImageUpdateInput!) {
         imageUpdate(input: $input) {
@@ -360,7 +357,6 @@ export async function updateImageTags(imageId, tagIds) {
     }
 }
 
-
 export async function searchTags(query) {
     const gql = `query FindTags($filter: FindFilterType, $tag_filter: TagFilterType) {
         findTags(filter: $filter, tag_filter: $tag_filter) {
@@ -377,11 +373,9 @@ export async function searchTags(query) {
     }
 
     try {
-        // Try multiple approaches for better fuzzy matching
         const approaches = [
-            // Direct search first
             { q: searchTerm },
-            // Try with wildcards if direct search yields few/no results
+
             { q: `*${searchTerm}*` },
         ];
 
@@ -474,20 +468,17 @@ export async function fetchGalleriesByTags(tagIds, page = 1, perPage = 50) {
 
 
 export async function applyGalleryTagFilter(includedTags, excludedTags) {
-    // Store filter in session storage as an object
     const filterObj = {
         included: includedTags,
         excluded: excludedTags
     };
     sessionStorage.setItem('galleryTagFilter', JSON.stringify(filterObj));
     
-    // Emit event to notify deck that filter changed
     window.dispatchEvent(new CustomEvent('galleryTagFilterChanged', { 
         detail: { includedTags, excludedTags } 
     }));
 }
 
-// Also update the clear function
 export function clearGalleryTagFilter() {
     sessionStorage.removeItem('galleryTagFilter');
     window.dispatchEvent(new CustomEvent('galleryTagFilterChanged', { 
@@ -495,21 +486,17 @@ export function clearGalleryTagFilter() {
     }));
 }
 
-// Enhanced version of detectContext to handle tag filtering
 export function detectContextWithFilter() {
     const baseContext = detectContext();
     
-    // Check for tag filter in session storage
     const tagFilter = sessionStorage.getItem('galleryTagFilter');
     if (tagFilter) {
         try {
             const tagIds = JSON.parse(tagFilter);
             if (tagIds.length > 0) {
-                // Apply tag filter to context
                 if (!baseContext.filter) {
                     baseContext.filter = {};
                 }
-                // Ensure we merge with existing filters properly
                 baseContext.filter = {
                     ...baseContext.filter,
                     tags: {

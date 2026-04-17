@@ -1,13 +1,11 @@
-// ui/metadata.js
 import { fetchImageMetadata, updateImageMetadata, updateImageTags, searchTags, fetchGalleryMetadata, updateGalleryMetadata } from './graphql.js';
 
 let currentMetadata = null;
-let currentSwiperRef = null; // Reference to current swiper instance
+let currentSwiperRef = null; 
 
 export function setCurrentSwiper(swiper) {
     currentSwiperRef = swiper;
 }
-
 
 export async function openMetadataModal() {
     if (!currentSwiperRef) return;
@@ -23,22 +21,16 @@ export async function openMetadataModal() {
 
     if (!modal || !body || !header) return;
 
-    // Show loading state
     body.innerHTML = '<div class="metadata-loading">Loading...</div>';
     modal.classList.add('active');
-
-    // Determine if current item is a gallery based on data properties
-    // This is more reliable than DOM inspection for virtual slides
     const isGallery = currentImage.isGallery || 
                      currentImage.url || 
                      (currentImage.image_count !== undefined) ||
                      (currentImage.type === 'gallery');
 
     if (isGallery) {
-        // Update header for gallery
         header.textContent = 'Gallery Details';
         
-        // Extract gallery ID from URL - this is the key fix
         let galleryId = currentImage.id;
         if (currentImage.url) {
             const urlMatch = currentImage.url.match(/\/galleries\/(\d+)/);
@@ -46,13 +38,9 @@ export async function openMetadataModal() {
                 galleryId = urlMatch[1];
             }
         }
-        
-        // Always fetch fresh metadata instead of using cached data
         currentMetadata = await fetchGalleryMetadata(galleryId);
     } else {
-        // Update header for image
         header.textContent = 'Image Details';
-        // Always fetch fresh metadata for images too
         currentMetadata = await fetchImageMetadata(currentImage.id);
     }
 
@@ -61,7 +49,6 @@ export async function openMetadataModal() {
         return;
     }
 
-    // Populate modal based on type
     if (isGallery) {
         populateGalleryMetadataModal(currentMetadata);
     } else {
@@ -73,8 +60,6 @@ export async function openMetadataModal() {
 function populateGalleryMetadataModal(metadata) {
     const body = document.querySelector('.image-deck-metadata-body');
     if (!body) return;
-
-    // Construct proper Stash URL - handle case where metadata.url might be "null" string
     let viewUrl = '/galleries'; // fallback
     if (metadata.id) {
         viewUrl = `/galleries/${metadata.id}`;
@@ -182,15 +167,12 @@ function setupGalleryMetadataHandlers(metadata) {
     const saveBtn = body.querySelector('.metadata-save-btn');
     if (!saveBtn) return;
 
-    // Store original values for comparison later
     const originalTagIds = metadata.tags ? metadata.tags.map(tag => tag.id) : [];
     const originalPerformerIds = metadata.performers ? metadata.performers.map(performer => performer.id) : [];
     const originalStudioId = metadata.studio ? metadata.studio.id : null;
     let currentTagIds = [...originalTagIds];
     let currentPerformerIds = [...originalPerformerIds];
     let currentStudioId = originalStudioId;
-
-    // Studio search functionality
     const studioSearch = body.querySelector('.metadata-studio-search');
     const studioResults = body.querySelector('.metadata-studio-results');
     let studioSearchTimeout;
@@ -206,7 +188,6 @@ function setupGalleryMetadataHandlers(metadata) {
             }
 
             studioSearchTimeout = setTimeout(async () => {
-                // Import searchStudios function
                 const { searchStudios } = await import('./graphql.js');
                 const studios = await searchStudios(query);
                 studioResults.innerHTML = studios.map(studio =>
@@ -215,34 +196,26 @@ function setupGalleryMetadataHandlers(metadata) {
                     </div>`
                 ).join('');
 
-                // Add click handlers for results
                 studioResults.querySelectorAll('.metadata-tag-result').forEach(result => {
                     result.addEventListener('click', (e) => {
                         const studioId = e.target.dataset.studioId;
                         const studioName = e.target.dataset.studioName;
 
-                        // Clear existing studio first
                         const studioContainer = body.querySelector('.metadata-studio');
+						
                         studioContainer.innerHTML = '';
-
-                        // Add studio to list using the same metadata-tag class
                         const studioHtml = `<span class="metadata-tag" data-studio-id="${studioId}">
                             ${studioName}
                             <button class="metadata-tag-remove" data-studio-id="${studioId}">×</button>
                         </span>`;
                         studioContainer.insertAdjacentHTML('beforeend', studioHtml);
-
-                        // Set current studio ID
                         currentStudioId = studioId;
-
-                        // Setup remove handler for studio (same as tags)
                         const newStudio = studioContainer.lastElementChild;
                         newStudio.querySelector('.metadata-tag-remove').addEventListener('click', (e) => {
                             e.target.closest('.metadata-tag').remove();
                             currentStudioId = null;
                         });
 
-                        // Clear search
                         studioSearch.value = '';
                         studioResults.innerHTML = '';
                     });
@@ -251,7 +224,6 @@ function setupGalleryMetadataHandlers(metadata) {
         });
     }
 
-    // Studio removal (using same classes as tags)
     body.querySelectorAll('.metadata-studio .metadata-tag-remove').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const studioEl = e.target.closest('.metadata-tag');
@@ -262,7 +234,6 @@ function setupGalleryMetadataHandlers(metadata) {
         });
     });
 
-    // Performer search functionality (existing code)
     const performerSearch = body.querySelector('.metadata-performer-search');
     const performerResults = body.querySelector('.metadata-performer-results');
     let performerSearchTimeout;
@@ -278,7 +249,6 @@ function setupGalleryMetadataHandlers(metadata) {
             }
 
             performerSearchTimeout = setTimeout(async () => {
-                // Import searchPerformers function
                 const { searchPerformers } = await import('./graphql.js');
                 const performers = await searchPerformers(query);
                 performerResults.innerHTML = performers.map(performer =>
@@ -287,18 +257,15 @@ function setupGalleryMetadataHandlers(metadata) {
                     </div>`
                 ).join('');
 
-                // Add click handlers for results
                 performerResults.querySelectorAll('.metadata-tag-result').forEach(result => {
                     result.addEventListener('click', (e) => {
                         const performerId = e.target.dataset.performerId;
                         const performerName = e.target.dataset.performerName;
 
-                        // Check if performer is already added
                         if (currentPerformerIds.includes(performerId)) {
                             return;
                         }
 
-                        // Add performer to list using the same metadata-tag class
                         const performersContainer = body.querySelector('.metadata-performers');
                         const performerHtml = `<span class="metadata-tag" data-performer-id="${performerId}">
                             ${performerName}
@@ -306,19 +273,15 @@ function setupGalleryMetadataHandlers(metadata) {
                         </span>`;
                         performersContainer.insertAdjacentHTML('beforeend', performerHtml);
 
-                        // Add to current performers array
                         currentPerformerIds.push(performerId);
 
-                        // Setup remove handler for new performer (same as tags)
                         const newPerformer = performersContainer.lastElementChild;
                         newPerformer.querySelector('.metadata-tag-remove').addEventListener('click', (e) => {
                             const removePerformerId = e.target.dataset.performerId;
                             e.target.closest('.metadata-tag').remove();
-                            // Remove from current performers array
+
                             currentPerformerIds = currentPerformerIds.filter(id => id !== removePerformerId);
                         });
-
-                        // Clear search
                         performerSearch.value = '';
                         performerResults.innerHTML = '';
                     });
@@ -327,20 +290,17 @@ function setupGalleryMetadataHandlers(metadata) {
         });
     }
 
-    // Performer removal (using same classes as tags)
     body.querySelectorAll('.metadata-performers .metadata-tag-remove').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const performerId = e.target.dataset.performerId;
             const performerEl = e.target.closest('.metadata-tag');
             if (performerEl) {
                 performerEl.remove();
-                // Remove from current performers array
                 currentPerformerIds = currentPerformerIds.filter(id => id !== performerId);
             }
         });
     });
 
-    // Tag search functionality (existing code remains the same)
     const tagSearch = body.querySelector('.metadata-tag-search:not(.metadata-performer-search):not(.metadata-studio-search)');
     const tagResults = body.querySelector('.metadata-tag-results:not(.metadata-performer-results):not(.metadata-studio-results)');
     let tagSearchTimeout;
@@ -364,34 +324,24 @@ function setupGalleryMetadataHandlers(metadata) {
                     </div>`
                 ).join('');
 
-                // Add click handlers for results
                 tagResults.querySelectorAll('.metadata-tag-result').forEach(result => {
                     result.addEventListener('click', (e) => {
                         const tagId = e.target.dataset.tagId;
                         const tagName = e.target.dataset.tagName;
-
-                        // Check if tag is already added
                         if (currentTagIds.includes(tagId)) {
                             return;
                         }
-
-                        // Add tag to list
                         const tagsContainer = body.querySelector('.metadata-tags:not(.metadata-performers):not(.metadata-studio)');
                         const tagHtml = `<span class="metadata-tag" data-tag-id="${tagId}">
                             ${tagName}
                             <button class="metadata-tag-remove" data-tag-id="${tagId}">×</button>
                         </span>`;
                         tagsContainer.insertAdjacentHTML('beforeend', tagHtml);
-
-                        // Add to current tags array
                         currentTagIds.push(tagId);
-
-                        // Setup remove handler for new tag
                         const newTag = tagsContainer.lastElementChild;
                         newTag.querySelector('.metadata-tag-remove').addEventListener('click', (e) => {
                             const removeTagId = e.target.dataset.tagId;
                             e.target.closest('.metadata-tag').remove();
-                            // Remove from current tags array
                             currentTagIds = currentTagIds.filter(id => id !== removeTagId);
                         });
 
@@ -404,14 +354,12 @@ function setupGalleryMetadataHandlers(metadata) {
         });
     }
 
-    // Tag removal (existing code)
     body.querySelectorAll('.metadata-tags:not(.metadata-performers):not(.metadata-studio) .metadata-tag-remove').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const tagId = e.target.dataset.tagId;
             const tagEl = e.target.closest('.metadata-tag');
             if (tagEl) {
                 tagEl.remove();
-                // Remove from current tags array
                 currentTagIds = currentTagIds.filter(id => id !== tagId);
             }
         });
@@ -425,42 +373,34 @@ function setupGalleryMetadataHandlers(metadata) {
         saveBtn.disabled = true;
 
         try {
-            // Update gallery metadata (title, details)
             const result = await updateGalleryMetadata(metadata.id, { title, details });
             
             if (!result) {
                 throw new Error('Failed to update gallery metadata');
             }
-
-            // Check if tags have changed
+			
             const tagsChanged = JSON.stringify(currentTagIds.sort()) !== JSON.stringify(originalTagIds.sort());
             
             if (tagsChanged) {
-                // Update gallery tags directly with a separate mutation
                 await updateGalleryTagsSeparately(metadata.id, currentTagIds);
             }
-
-            // Check if performers have changed
+			
             const performersChanged = JSON.stringify(currentPerformerIds.sort()) !== JSON.stringify(originalPerformerIds.sort());
             
             if (performersChanged) {
-                // Update gallery performers
                 const { updateGalleryPerformers } = await import('./graphql.js');
                 await updateGalleryPerformers(metadata.id, currentPerformerIds);
             }
 
-            // Check if studio has changed
             const studioChanged = currentStudioId !== originalStudioId;
             
             if (studioChanged) {
-                // Update gallery studio
                 const { updateGalleryStudio } = await import('./graphql.js');
                 await updateGalleryStudio(metadata.id, currentStudioId);
             }
 
             saveBtn.textContent = 'Saved ✓';
             
-            // Update the filename display
             const filenameEl = body.querySelector('.metadata-filename');
             if (filenameEl) {
                 filenameEl.textContent = title || 'Untitled';
@@ -526,15 +466,13 @@ export function closeMetadataModal() {
         modal.classList.remove('active');
     }
     currentMetadata = null;
-    
-    // Don't call updateControlVisibility here - let the caller handle it
-}
+    }
 
 function populateImageMetadataModal(metadata) {
     const body = document.querySelector('.image-deck-metadata-body');
     if (!body) return;
 
-    const rating = metadata.rating100 ? metadata.rating100 / 20 : 0; // Convert to 5-star scale
+    const rating = metadata.rating100 ? metadata.rating100 / 20 : 0; 
     const filename = metadata.files && metadata.files.length > 0 ? metadata.files[0].basename : 'Unknown';
 
     body.innerHTML = `
@@ -597,14 +535,12 @@ function populateImageMetadataModal(metadata) {
         </div>
     `;
 
-    // Setup event handlers for the modal
     setupMetadataHandlers(metadata);
 }
 
 function setupMetadataHandlers(metadata) {
     const body = document.querySelector('.image-deck-metadata-body');
 
-    // Rating stars
     body.querySelectorAll('.metadata-star').forEach(star => {
         star.addEventListener('click', (e) => {
             const rating = parseInt(e.target.dataset.rating);
@@ -614,7 +550,6 @@ function setupMetadataHandlers(metadata) {
         });
     });
 
-    // Tag removal
     body.querySelectorAll('.metadata-tag-remove').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const tagId = e.target.dataset.tagId;
@@ -623,7 +558,6 @@ function setupMetadataHandlers(metadata) {
         });
     });
 
-    // Tag search
     const tagSearch = body.querySelector('.metadata-tag-search');
     const tagResults = body.querySelector('.metadata-tag-results');
     let searchTimeout;
@@ -645,13 +579,11 @@ function setupMetadataHandlers(metadata) {
                 </div>`
             ).join('');
 
-            // Add click handlers for results
             tagResults.querySelectorAll('.metadata-tag-result').forEach(result => {
                 result.addEventListener('click', (e) => {
                     const tagId = e.target.dataset.tagId;
                     const tagName = e.target.dataset.tagName;
 
-                    // Add tag to list
                     const tagsContainer = body.querySelector('.metadata-tags');
                     const tagHtml = `<span class="metadata-tag" data-tag-id="${tagId}">
                         ${tagName}
@@ -659,13 +591,11 @@ function setupMetadataHandlers(metadata) {
                     </span>`;
                     tagsContainer.insertAdjacentHTML('beforeend', tagHtml);
 
-                    // Setup remove handler for new tag
                     const newTag = tagsContainer.lastElementChild;
                     newTag.querySelector('.metadata-tag-remove').addEventListener('click', (e) => {
                         e.target.closest('.metadata-tag').remove();
                     });
 
-                    // Clear search
                     tagSearch.value = '';
                     tagResults.innerHTML = '';
                 });
@@ -673,7 +603,6 @@ function setupMetadataHandlers(metadata) {
         }, 300);
     });
 
-    // Save button
     const saveBtn = body.querySelector('.metadata-save-btn');
     saveBtn.addEventListener('click', async () => {
         const title = body.querySelector('.metadata-title').value;
@@ -681,7 +610,6 @@ function setupMetadataHandlers(metadata) {
         const activeStar = body.querySelectorAll('.metadata-star.active').length;
         const rating100 = activeStar * 20;
 
-        // Get current tag IDs
         const tagIds = Array.from(body.querySelectorAll('.metadata-tag')).map(tag =>
             tag.dataset.tagId
         );
@@ -689,7 +617,6 @@ function setupMetadataHandlers(metadata) {
         saveBtn.textContent = 'Saving...';
         saveBtn.disabled = true;
 
-        // Update metadata
         await updateImageMetadata(metadata.id, { title, details, rating100 });
         await updateImageTags(metadata.id, tagIds);
 
@@ -700,7 +627,6 @@ function setupMetadataHandlers(metadata) {
         }, 2000);
     });
 
-    // Organized toggle
     const organizedBtn = body.querySelector('.metadata-organized-btn');
     organizedBtn.addEventListener('click', async () => {
         const isOrganized = organizedBtn.classList.contains('active');

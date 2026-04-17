@@ -1,27 +1,17 @@
-// ui/ui.js
 import { createLaunchButton, cleanupButton, retryCreateButton } from './button.js';
 
 export function initialize() {
     console.log('[Image Deck] Initializing...');
-
-    // Wait for Swiper to load
     if (typeof Swiper === 'undefined') {
         console.error('[Image Deck] Swiper not loaded!');
         return;
     }
-
-    // Create launch button on relevant pages
     retryCreateButton();
-
-    // Initialize preview button hijacking
     initPreviewObserver();
-
-    // Watch for DOM changes to detect when React renders new content
     let debounceTimer;
     const observer = new MutationObserver((mutations) => {
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
-            // Check if button exists and we're still on a valid page
             const hasButton = document.querySelector('.image-deck-launch-btn');
             const shouldHaveButton = 
                 document.querySelectorAll('img[src*="/image/"]').length > 0 ||
@@ -32,7 +22,6 @@ export function initialize() {
             }
         }, 300);
     });
-    // Observe the main content area for changes
     const mainContent = document.querySelector('.main-content') ||
                       document.querySelector('[role="main"]') ||
                       document.body;
@@ -48,23 +37,18 @@ function initPreviewObserver() {
     const previewObserver = new MutationObserver((mutations) => {
         mutations.forEach((mutation) => {
             mutation.addedNodes.forEach((node) => {
-                if (node.nodeType === 1) { // Element node
-                    // Handle both direct matches and child queries
+                if (node.nodeType === 1) { 
                     let previewButtons = [];
-                    
-                    // Look for buttons with magnifying glass SVG (preview buttons)
                     const isPreviewButton = (el) => {
                         if (el.tagName !== 'BUTTON') return false;
                         const svg = el.querySelector('svg');
                         return svg && svg.dataset.icon === 'magnifying-glass';
                     };
-                    
-                    // Check if the node itself is a preview button
+
                     if (isPreviewButton(node)) {
                         previewButtons.push(node);
                     }
-                    
-                    // Check for preview buttons within the node
+
                     if (node.querySelectorAll) {
                         const buttons = node.querySelectorAll('button');
                         buttons.forEach(btn => {
@@ -75,24 +59,16 @@ function initPreviewObserver() {
                     }
                     
                     previewButtons.forEach((button) => {
-                        // Make sure we haven't already processed this button
                         if (!button.dataset.hijacked) {
                             button.dataset.hijacked = 'true';
-                            
-                            // Remove existing event listeners by cloning
                             const newButton = button.cloneNode(true);
                             button.parentNode.replaceChild(newButton, button);
-                            
-                            // Add our custom click handler
                             newButton.addEventListener('click', (e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
                                 console.log('[Image Deck] Preview button clicked (dynamic)');
-                                
-                                // Find the image associated with this preview button
                                 const card = newButton.closest('.image-card, .grid-card');
                                 const img = card?.querySelector('img[src*="/image/"]');
-                                
                                 let targetImageId = null;
                                 if (img) {
                                     const idMatch = img.src.match(/\/image\/(\d+)/);
@@ -100,8 +76,6 @@ function initPreviewObserver() {
                                         targetImageId = idMatch[1];
                                     }
                                 }
-                                
-                                // Pass the target image ID to openDeck
                                 import('./deck.js').then(module => {
                                     module.openDeck(targetImageId);
                                 });
@@ -117,35 +91,23 @@ function initPreviewObserver() {
         childList: true,
         subtree: true
     });
-    
-    // Also process existing preview buttons on page load
     processExistingPreviewButtons();
 }
 
-
-
 function processExistingPreviewButtons() {
-    // Look for all buttons with magnifying glass icon
     const buttons = document.querySelectorAll('button');
     buttons.forEach(button => {
         const svg = button.querySelector('svg');
         if (svg && svg.dataset.icon === 'magnifying-glass' && !button.dataset.hijacked) {
             button.dataset.hijacked = 'true';
-            
-            // Remove existing event listeners by cloning
             const newButton = button.cloneNode(true);
             button.parentNode.replaceChild(newButton, button);
-            
-            // Add our custom click handler
             newButton.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 console.log('[Image Deck] Preview button clicked');
-                
-                // Find the image associated with this preview button
                 const card = newButton.closest('.image-card, .grid-card');
                 const img = card?.querySelector('img[src*="/image/"]');
-                
                 let targetImageId = null;
                 if (img) {
                     const idMatch = img.src.match(/\/image\/(\d+)/);
@@ -153,8 +115,6 @@ function processExistingPreviewButtons() {
                         targetImageId = idMatch[1];
                     }
                 }
-                
-                // Pass the target image ID to openDeck
                 import('./deck.js').then(module => {
                     module.openDeck(targetImageId);
                 });
@@ -177,8 +137,6 @@ function processPreviewButton(previewContainer) {
                 e.preventDefault();
                 e.stopPropagation();
                 console.log('[Image Deck] Preview button clicked');
-                
-                // Find the image associated with this preview button
                 const card = previewContainer.closest('.image-card, .grid-card');
                 const img = card?.querySelector('img[src*="/image/"]');
                 
@@ -189,8 +147,6 @@ function processPreviewButton(previewContainer) {
                         targetImageId = idMatch[1];
                     }
                 }
-                
-                // Pass the target image ID to openDeck
                 import('./deck.js').then(module => {
                     module.openDeck(targetImageId);
                 });
@@ -202,8 +158,6 @@ function processPreviewButton(previewContainer) {
 function createModeToggleButton(container) {
     const topBar = container.querySelector('.image-deck-topbar');
     if (!topBar) return;
-
-    // Create the mode indicator element
     const modeIndicator = document.createElement('div');
     modeIndicator.className = 'mode-indicator';
     modeIndicator.style.cssText = `
@@ -218,38 +172,25 @@ function createModeToggleButton(container) {
         align-items: center;
         gap: 5px;
     `;
-
-    // Set initial mode display
     const isGalleryMode = window.location.pathname === '/galleries' || 
                           window.location.pathname.startsWith('/galleries/');
     updateModeDisplay(modeIndicator, isGalleryMode);
-
-    // Insert before the counter
     const counter = topBar.querySelector('.image-deck-counter');
     if (counter && counter.parentNode) {
         counter.parentNode.insertBefore(modeIndicator, counter);
     }
-
-    // Add click handler to toggle modes
     modeIndicator.addEventListener('click', async () => {
         const currentMode = modeIndicator.textContent.includes('Gallery Mode') ? 'gallery' : 'image';
         const newMode = currentMode === 'gallery' ? 'image' : 'gallery';
-        
-        // Update display immediately
         updateModeDisplay(modeIndicator, newMode === 'gallery');
-
-        // Reload deck with new mode
         import('./deck.js').then(module => {
             module.closeDeck();
-            // Small delay to ensure cleanup
             setTimeout(() => {
                 module.openDeck();
             }, 100);
         });
     });
 }
-
-// Helper function to update mode display
 function updateModeDisplay(element, isGalleryMode) {
     element.innerHTML = isGalleryMode ? 
         '🖼️ Gallery Mode Enabled🖼️' : 

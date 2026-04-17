@@ -19,19 +19,15 @@ let chunkSize = 50;
 let totalImageCount = 0;
 let totalPages = 0;
 let storedContextInfo = null;
-
-// Performance monitoring for mobile
 let performanceMonitor = null;
 let frameDropCount = 0;
-
-// Cleanup functions array
 let cleanupFunctions = [];
 
 function startPerformanceMonitoring() {
-    if (!isMobile) return; // Only monitor on mobile
+    if (!isMobile) return; 
     
     let lastTime = performance.now();
-    const fpsThreshold = 30; // Target minimum FPS
+    const fpsThreshold = 30; 
     
     performanceMonitor = setInterval(() => {
         const currentTime = performance.now();
@@ -90,16 +86,12 @@ function getCurrentFilterTags() {
     return { included: [], excluded: [] };
 }
 
-// Function to update content with filter in real-time
-
 async function updateDeckContentWithFilter() {
     console.log('[Image Deck] Updating content with filter');
     
     try {
-        // Reset pagination
         currentChunkPage = 1;
-        
-        // Always get fresh context that includes current filters
+
         const contextToUse = detectContext();
         if (!contextToUse) {
             console.error('[Image Deck] Could not detect context for fetching');
@@ -107,32 +99,20 @@ async function updateDeckContentWithFilter() {
         }
         
         console.log('[Image Deck] Using context for filter update:', contextToUse);
-        
-        // Fetch filtered content directly from GraphQL
         const result = await fetchContextImages(contextToUse, 1, chunkSize);
         
         if (result && result.images) {
-            // Update current images
             currentImages = result.images;
             totalImageCount = result.totalCount || 0;
             totalPages = result.totalPages || 1;
 			window.currentImages = currentImages;
-            
-            // Update Swiper with new content
             if (currentSwiper && currentSwiper.virtual) {
-                // Generate new slides using the same template function
                 const newSlides = currentImages.map(img => {
                     return getSlideTemplateImpl(img, contextToUse, false);
                 });
-
-                // Update virtual slides
                 currentSwiper.virtual.slides = newSlides;
                 currentSwiper.virtual.update(true);
-                
-                // Force swiper to rebuild and go to first slide
-                currentSwiper.slideTo(0, 0, false); // Instant transition
-                
-                // Multiple update attempts to ensure proper rendering
+                currentSwiper.slideTo(0, 0, false); 
                 setTimeout(() => {
                     if (currentSwiper) {
                         currentSwiper.update();
@@ -146,11 +126,10 @@ async function updateDeckContentWithFilter() {
                 }, 100);
             }
             
-            // Update UI elements
             const container = document.querySelector('.image-deck-container');
             if (container) {
                 updateUI(container);
-                await updateFilterDisplayInUI(); // Update filter display
+                await updateFilterDisplayInUI(); 
             }
             
             console.log('[Image Deck] Content updated with filter, showing', currentImages.length, 'items');
@@ -164,7 +143,6 @@ async function restoreFilterDisplayOnOpen(container) {
     const currentTags = getCurrentFilterTags();
     
     if (currentTags.included.length > 0 || currentTags.excluded.length > 0) {
-        // Get tag names
         const allTagIds = [...currentTags.included, ...currentTags.excluded];
         const tagNames = await getTagNames(allTagIds);
         
@@ -174,7 +152,6 @@ async function restoreFilterDisplayOnOpen(container) {
         
         let filterHtml = '<span style="color: #ccc; font-size: 12px; background: rgba(0,0,0,0.5); padding: 2px 8px; border-radius: 10px;">FILTERED BY:</span>';
         
-        // Add included tags
         filterHtml += currentTags.included.map(tagId => {
             const tagName = tagNames[tagId] || `Tag:${tagId}`;
             return `
@@ -184,7 +161,6 @@ async function restoreFilterDisplayOnOpen(container) {
                 </span>`;
         }).join('');
         
-        // Add excluded tags
         filterHtml += currentTags.excluded.map(tagId => {
             const tagName = tagNames[tagId] || `Tag:${tagId}`;
             return `
@@ -197,7 +173,6 @@ async function restoreFilterDisplayOnOpen(container) {
         filterDisplay.innerHTML = filterHtml;
         container.insertBefore(filterDisplay, container.querySelector('.image-deck-progress'));
         
-        // Add event listeners to remove buttons
         setTimeout(() => {
             filterDisplay.querySelectorAll('.remove-filter-tag').forEach(button => {
                 button.addEventListener('click', async (e) => {
@@ -205,7 +180,6 @@ async function restoreFilterDisplayOnOpen(container) {
                     const tagId = button.dataset.tagId;
                     const currentTags = getCurrentFilterTags();
                     
-                    // Remove from either included or excluded list
                     let newIncluded = currentTags.included.filter(id => id !== tagId);
                     let newExcluded = currentTags.excluded.filter(id => id !== tagId);
                     
@@ -230,19 +204,15 @@ async function forceRefreshGalleryCovers() {
     console.log('[Image Deck] Force refreshing gallery covers');
     
     try {
-        // Get fresh context with current filters BUT ensure gallery mode is preserved
         let freshContext = detectContext();
-        
-        // Fix: Ensure we stay in gallery mode when we're supposed to be in gallery mode
+
         if (window.location.pathname.startsWith('/galleries') || 
             sessionStorage.getItem('imageDeckMode') === 'gallery' ||
             (storedContextInfo && storedContextInfo.type === 'galleries')) {
             
             if (!freshContext || freshContext.type !== 'galleries') {
-                // Force gallery context
                 const urlFilters = parseUrlFilters(window.location.search);
                 
-                // Apply tag filters from session storage
                 const tagFilter = sessionStorage.getItem('galleryTagFilter');
                 if (tagFilter) {
                     try {
@@ -252,14 +222,12 @@ async function forceRefreshGalleryCovers() {
                             
                             const finalFilters = urlFilters || {};
                             
-                            // Add included tags
                             if (filterObj.included.length > 0) {
                                 finalFilters.tags = {
                                     value: filterObj.included,
                                     modifier: "INCLUDES"
                                 };
                             }
-                            // Add excluded tags
                             if (filterObj.excluded.length > 0) {
                                 if (finalFilters.tags) {
                                     finalFilters.tags.excluded = filterObj.excluded;
@@ -307,35 +275,25 @@ async function forceRefreshGalleryCovers() {
             return;
         }
         
-        // Reset pagination
         currentChunkPage = 1;
         
-        // Fetch fresh content
         const result = await fetchContextImages(freshContext, 1, chunkSize);
         console.log('[Image Deck] Fresh content result:', result);
         
         if (result && result.images) {
-            // Update the global state
             currentImages = result.images;
 			window.currentImages = currentImages;
             totalImageCount = result.totalCount || 0;
             totalPages = result.totalPages || 1;
-            
-            // Rebuild the swiper if it exists
+
             if (currentSwiper) {
                 console.log('[Image Deck] Rebuilding Swiper with fresh content');
-                
-                // Get the container
                 const container = document.querySelector('.image-deck-container');
-                
                 if (container) {
-                    // Destroy existing swiper properly
                     if (currentSwiper && typeof currentSwiper.destroy === 'function') {
                         currentSwiper.destroy(true, true);
                     }
                     currentSwiper = null;
-                    
-                    // Clear the swiper wrapper to ensure clean slate
                     const swiperEl = container.querySelector('.swiper');
                     if (swiperEl) {
                         const wrapper = swiperEl.querySelector('.swiper-wrapper');
@@ -343,8 +301,6 @@ async function forceRefreshGalleryCovers() {
                             wrapper.innerHTML = '';
                         }
                     }
-                    
-                    // Reinitialize swiper using the existing initSwiper function
                     currentSwiper = initSwiper(
                         container, 
                         currentImages, 
@@ -356,27 +312,19 @@ async function forceRefreshGalleryCovers() {
                         savePosition, 
                         freshContext
                     );
-                    
-                    // Set global references
                     window.currentSwiperInstance = currentSwiper;
                     setCurrentSwiper(currentSwiper);
-                    
-                    // Force proper initialization and centering
                     setTimeout(() => {
                         if (currentSwiper) {
                             currentSwiper.update();
                             currentSwiper.slideTo(0, 0, false);
                         }
                     }, 50);
-                    
-                    // Additional update for good measure
                     setTimeout(() => {
                         if (currentSwiper) {
                             currentSwiper.update();
                         }
                     }, 100);
-                    
-                    // Update UI
                     updateUI(container);
                     await updateFilterDisplayInUI();
                     
@@ -434,20 +382,12 @@ export async function openDeck(targetImageId = null) {
         chunkSize = 50;
         totalImageCount = 0;
         totalPages = 0;
-
-        // Load config
         pluginConfig = await getPluginConfig();
         console.log('[Image Deck] Plugin config loaded:', pluginConfig);
-
         injectDynamicStyles(pluginConfig);
-
-        // 1. Context Detection Logic
         let detectedContext = detectContext();
-
-        // Check if we have a stored mode preference
         const storedMode = sessionStorage.getItem('imageDeckMode');
         
-        // Override context based on stored mode preference ONLY if not in performer context
         if (!detectedContext?.isPerformerContext) {
             if (storedMode === 'image') {
                 detectedContext = {
@@ -467,13 +407,10 @@ export async function openDeck(targetImageId = null) {
         }
 
         const path = window.location.pathname;
-        // Enhanced performer context detection
         if (path.match(/^\/performers\/\d+/) && !detectedContext?.isPerformerContext) {
             const performerMatch = path.match(/^\/performers\/(\d+)/);
             if (performerMatch) {
                 const performerId = performerMatch[1];
-                
-                // Check if we're on galleries or images sub-path
                 let isImagesTab = path.includes('/images') || 
                                  window.location.hash.includes('images') ||
                                  document.querySelector('.nav-tabs .active')?.textContent?.includes('Images');
@@ -481,10 +418,8 @@ export async function openDeck(targetImageId = null) {
                                     window.location.hash.includes('galleries') ||
                                     document.querySelector('.nav-tabs .active')?.textContent?.includes('Galleries');
                 
-                // Default behavior - if no explicit tab, check what's shown
                 if (!path.includes('/images') && !path.includes('/galleries')) {
-                    // This is the main performer page - determine default tab
-                    isImagesTab = true; // Default to images
+                    isImagesTab = true; 
                 }
                 
                 const type = isGalleriesTab ? 'galleries' : 'images';
@@ -501,7 +436,6 @@ export async function openDeck(targetImageId = null) {
                     }
                 };
                 
-                // Parse URL parameters for sorting
                 const params = new URLSearchParams(window.location.search);
                 if (params.has('sortby')) {
                     detectedContext.filter.sortBy = params.get('sortby');
@@ -532,20 +466,17 @@ export async function openDeck(targetImageId = null) {
             };
         }
 
-        // === ADD THIS FIX: Apply stored gallery tag filters to context ===
         const tagFilter = sessionStorage.getItem('galleryTagFilter');
         if (tagFilter && detectedContext.type === 'galleries' && (detectedContext.isGalleryListing || !detectedContext.id)) {
             try {
                 const filterObj = JSON.parse(tagFilter);
                 if ((filterObj.included && filterObj.included.length > 0) || 
                     (filterObj.excluded && filterObj.excluded.length > 0)) {
-                    
-                    // Ensure filter object exists
+
                     if (!detectedContext.filter) {
                         detectedContext.filter = {};
                     }
-                    
-                    // Apply included tags
+
                     if (filterObj.included.length > 0) {
                         detectedContext.filter.tags = {
                             value: filterObj.included,
@@ -553,7 +484,6 @@ export async function openDeck(targetImageId = null) {
                         };
                     }
                     
-                    // Apply excluded tags
                     if (filterObj.excluded.length > 0) {
                         if (detectedContext.filter.tags) {
                             detectedContext.filter.tags.excluded = filterObj.excluded;
@@ -575,7 +505,6 @@ export async function openDeck(targetImageId = null) {
         contextInfo = detectedContext;
         console.log('[Image Deck] Context assigned:', contextInfo);
 
-        // 2. Determine what content to show
         let imageResult;
 
         const isListContext = contextInfo && (
@@ -597,8 +526,7 @@ export async function openDeck(targetImageId = null) {
             console.log('[Image Deck] Falling back to visible images');
             imageResult = getVisibleImages();
         }
-        
-        // 3. Handle data results
+
         if (Array.isArray(imageResult)) {
             currentImages = imageResult;
             totalImageCount = imageResult.length;
@@ -613,21 +541,17 @@ export async function openDeck(targetImageId = null) {
 
         console.log(`[Image Deck] Opening with ${currentImages.length} items (chunk 1 of ${totalPages || 1})`);
 
-        // 4. Create UI
-        const container = await createDeckUI(); // Make sure to await this
+        const container = await createDeckUI(); 
         document.body.classList.add('image-deck-open');
 
-        // Add container to DOM first
         document.body.appendChild(container);
 
-        // Wait for next frame to ensure DOM is ready
         await new Promise(resolve => requestAnimationFrame(resolve));
 
         requestAnimationFrame(() => {
             container.classList.add('active');
         });
 
-        // 5. Initialize Swiper 
         currentSwiper = initSwiper(
             container, 
             currentImages, 
@@ -651,12 +575,10 @@ export async function openDeck(targetImageId = null) {
                 const speedIndicator = container.querySelector('.image-deck-speed');
                 
                 if (scale > 1) {
-                    // Fade out UI elements when zoomed in
                     if (topBar) topBar.style.opacity = '0';
                     if (controls) controls.style.opacity = '0';
                     if (speedIndicator) speedIndicator.style.opacity = '0';
                 } else {
-                    // Fade in UI elements when zoomed out
                     if (topBar) topBar.style.opacity = '1';
                     if (controls) controls.style.opacity = '1';
                     if (speedIndicator) speedIndicator.style.opacity = '1';
@@ -682,11 +604,9 @@ export async function openDeck(targetImageId = null) {
             restorePosition();
         }
 
-        // Initial UI update
         updateUI(container);
 		await restoreFilterDisplayOnOpen(container);
 
-        // Setup event handlers
         import('./controls.js').then(module => {
             module.setupEventHandlers(container, {
                 closeDeck,
@@ -695,20 +615,14 @@ export async function openDeck(targetImageId = null) {
                 loadNextChunk
             });
         });
-        
-        // Add listener for filter updates
 		const filterUpdateListener = (e) => {
 			console.log('[Image Deck] Received updateDeckContent event:', e.detail);
-			
-			// Force a complete refresh of gallery covers
 			setTimeout(() => {
 				forceRefreshGalleryCovers();
-			}, 100); // Small delay to ensure session storage is updated
+			}, 100); 
 		};
 
 		window.addEventListener('updateDeckContent', filterUpdateListener);
-
-		// Store cleanup function
 		cleanupFunctions.push(() => {
 			window.removeEventListener('updateDeckContent', filterUpdateListener);
 		});
@@ -725,7 +639,6 @@ async function getTagNames(tagIds) {
     if (!tagIds || tagIds.length === 0) return {};
     
     try {
-        // For each tag ID, make a separate findTag query
         const tagPromises = tagIds.map(async (tagId) => {
             const query = `query FindTag($id: ID!) {
                 findTag(id: $id) {
@@ -774,12 +687,10 @@ async function createDeckUI() {
         container.classList.add('mobile-performance-mode');
     }
     
-    // Get current filter tags for display
     const currentTags = getCurrentFilterTags();
     let filterDisplay = '';
     
     if (currentTags.included.length > 0 || currentTags.excluded.length > 0) {
-        // ... (rest of filter display code unchanged)
     }
 
     container.innerHTML = `
@@ -824,9 +735,7 @@ async function createDeckUI() {
         </div>
     `;
 
-    // Add event listeners to remove buttons AFTER the HTML is set
     if (currentTags.included.length > 0 || currentTags.excluded.length > 0) {
-        // We'll add these event listeners after the container is actually in the DOM
         setTimeout(() => {
             const removeButtons = container.querySelectorAll('.remove-filter-tag');
             removeButtons.forEach(button => {
@@ -834,8 +743,6 @@ async function createDeckUI() {
                     e.stopPropagation();
                     const tagId = button.dataset.tagId;
                     const currentTags = getCurrentFilterTags();
-                    
-                    // Remove from either included or excluded list
                     let newIncluded = currentTags.included.filter(id => id !== tagId);
                     let newExcluded = currentTags.excluded.filter(id => id !== tagId);
                     
@@ -861,14 +768,10 @@ async function createDeckUI() {
 async function updateFilterDisplayInUI() {
     const container = document.querySelector('.image-deck-container');
     if (!container) return;
-    
-    // Remove existing filter display
     const existingFilterDisplay = container.querySelector('.image-deck-current-filters');
     if (existingFilterDisplay) {
         existingFilterDisplay.remove();
     }
-    
-    // Add updated filter display
     const currentTags = getCurrentFilterTags();
     if (currentTags.included.length > 0 || currentTags.excluded.length > 0) {
         const allTagIds = [...currentTags.included, ...currentTags.excluded];
@@ -878,8 +781,6 @@ async function updateFilterDisplayInUI() {
         filterDisplay.style.cssText = 'position: absolute; top: 60px; left: 20px; right: 20px; z-index: 10; display: flex; flex-wrap: wrap; gap: 5px;';
         
         let filterHtml = '<span style="color: #ccc; font-size: 12px; background: rgba(0,0,0,0.5); padding: 2px 8px; border-radius: 10px;">FILTERED BY:</span>';
-        
-        // Add included tags with ✅ prefix and green color
         filterHtml += currentTags.included.map(tagId => {
             const tagName = tagNames[tagId] || `Tag:${tagId}`;
             return `
@@ -888,8 +789,6 @@ async function updateFilterDisplayInUI() {
                     <button class="remove-filter-tag" data-tag-id="${tagId}" style="background: none; border: none; color: white; margin-left: 5px; cursor: pointer; font-size: 14px;">×</button>
                 </span>`;
         }).join('');
-        
-        // Add excluded tags with ❌ prefix and red color
         filterHtml += currentTags.excluded.map(tagId => {
             const tagName = tagNames[tagId] || `Tag:${tagId}`;
             return `
@@ -901,16 +800,12 @@ async function updateFilterDisplayInUI() {
         
         filterDisplay.innerHTML = filterHtml;
         container.insertBefore(filterDisplay, container.querySelector('.image-deck-progress'));
-        
-        // Add event listeners to new remove buttons
         setTimeout(() => {
             filterDisplay.querySelectorAll('.remove-filter-tag').forEach(button => {
                 button.addEventListener('click', async (e) => {
                     e.stopPropagation();
                     const tagId = button.dataset.tagId;
                     const currentTags = getCurrentFilterTags();
-                    
-                    // Remove from either included or excluded list
                     let newIncluded = currentTags.included.filter(id => id !== tagId);
                     let newExcluded = currentTags.excluded.filter(id => id !== tagId);
                     
@@ -939,7 +834,6 @@ function updateUI(container) {
 
     uiUpdatePending = true;
     requestAnimationFrame(() => {
-        // Initialize mode indicator if not already present
         let modeIndicator = container.querySelector('.mode-indicator');
         if (!modeIndicator) {
             const topBar = container.querySelector('.image-deck-topbar');
@@ -961,17 +855,12 @@ function updateUI(container) {
                 
                 topBar.appendChild(modeIndicator);
                 
-                // Add click handler to toggle modes
                 modeIndicator.addEventListener('click', async () => {
                     const currentMode = contextInfo?.type === 'galleries' ? 'gallery' : 'image';
                     const newMode = currentMode === 'gallery' ? 'image' : 'gallery';
-                    
-                    // Store the new mode preference
+
                     sessionStorage.setItem('imageDeckMode', newMode);
-                    
-                    // For performer contexts, we need to navigate appropriately
                     if (contextInfo?.isPerformerContext && contextInfo.performerId) {
-                        // Build the appropriate URL for the new mode
                         let newPath = `/performers/${contextInfo.performerId}`;
                         if (newMode === 'gallery') {
                             newPath += '/galleries';
@@ -979,14 +868,11 @@ function updateUI(container) {
                             newPath += '/images';
                         }
                         
-                        // Update the browser URL without reloading
                         history.pushState({}, '', newPath);
                     }
                     
-                    // Reload deck with new mode
                     import('./deck.js').then(module => {
                         module.closeDeck();
-                        // Small delay to ensure cleanup
                         setTimeout(() => {
                             module.openDeck();
                         }, 100);
@@ -995,7 +881,6 @@ function updateUI(container) {
             }
         }
         
-        // Update mode display - only show one mode at a time
         if (modeIndicator) {
             const isGalleryMode = contextInfo?.type === 'galleries';
             modeIndicator.innerHTML = isGalleryMode ? 
@@ -1003,23 +888,18 @@ function updateUI(container) {
                 '📷 Image Mode Enabled 📷';
         }
 
-        // Rest of your updateUI code remains the same...
         let current = 1;
         const displayedTotal = currentImages.length;
         const actualTotal = totalImageCount || displayedTotal;
 
-        // Handle virtual slides differently
         if (currentSwiper.virtual) {
-            // For virtual slides, we track the active slide index
             current = currentSwiper.activeIndex + 1;
         } else {
-            // Handle looped galleries properly
             if (currentSwiper.params.loop && contextInfo?.isSingleGallery) {
-                // For looped galleries, get the real index
                 const realIndex = currentSwiper.realIndex + 1;
 
                 if (realIndex === 0) {
-                    current = displayedTotal; // Last slide
+                    current = displayedTotal; 
                 } else if (realIndex > displayedTotal) {
                     current = 1; 
                 } else {
@@ -1038,7 +918,6 @@ function updateUI(container) {
             }
         }
 
-        // Update progress bar
         if (pluginConfig.showProgressBar) {
             const progress = container.querySelector('.image-deck-progress');
             if (progress) {
@@ -1063,7 +942,6 @@ function checkAndLoadNextChunk() {
     }
 }
 
-// Auto-play controls
 export function startAutoPlay() {
     if (!currentSwiper || isAutoPlaying) return;
 
@@ -1105,7 +983,6 @@ export function stopAutoPlay() {
     }
 }
 
-// Save/restore position
 function savePosition() {
     if (!currentSwiper || !contextInfo) return;
     const key = `${PLUGIN_NAME}_position_${contextInfo.type}_${contextInfo.id}`;
@@ -1127,20 +1004,16 @@ function restorePosition() {
 let isChunkLoading = false; 
 
 export async function loadNextChunk(container = null) {
-    // Clear any pending timeouts to prevent race conditions
     if (chunkLoadTimeout) {
         clearTimeout(chunkLoadTimeout);
     }
     
-    // Debounce the chunk loading
     chunkLoadTimeout = setTimeout(async () => {
-        // 1. Guard: Prevent multiple simultaneous loads
         if (isChunkLoading) {
             console.log('[Image Deck] Load already in progress, skipping...');
             return;
         }
 
-        // 2. Guard: Check if we've reached the end
         if (currentChunkPage >= totalPages && totalPages !== 0) {
             console.log('[Image Deck] All chunks already loaded.');
             const loadingIndicator = document.querySelector('.image-deck-loading');
@@ -1153,7 +1026,6 @@ export async function loadNextChunk(container = null) {
 
         isChunkLoading = true;
 
-        // UI Feedback
         const loadingIndicator = document.querySelector('.image-deck-loading');
         const nextChunkButton = document.querySelector('[data-action="next-chunk"]');
         
@@ -1181,22 +1053,18 @@ export async function loadNextChunk(container = null) {
                 return;
             }
 
-            // 3. Update Data State
             currentImages.push(...result.images);
             currentChunkPage = nextPage;
             totalPages = result.totalPages || totalPages;
 
-            // 4. Update UI (Swiper OR Gallery)
             if (currentSwiper && currentSwiper.virtual) {
-                // Re-generate ALL slides to ensure formatting consistency across the whole deck
                 const allSlides = currentImages.map(img => {
                     const fullSrc = img.paths.image;
                     const isGallery = img.url && !contextInfo?.isSingleGallery;
                     const title = img.title || 'Untitled';
-                    const loading = 'lazy'; // Consistent with getSlideTemplate
+                    const loading = 'lazy'; 
 
                     if (isGallery) {
-                        // Use the same template structure as getSlideTemplate
                         const imageCountDisplay = img.image_count !== undefined ? 
                             `${GALLERY_ICON_SVG}: ${img.image_count}` : '';
                         
@@ -1219,7 +1087,6 @@ export async function loadNextChunk(container = null) {
                             </div>`;
                     }
 
-                    // For regular images, use the same structure as getSlideTemplate
                     return `
                         <div class="swiper-zoom-container" data-type="image">
                             <img src="${fullSrc}" alt="${title}" decoding="async" loading="${loading}" 
@@ -1227,15 +1094,12 @@ export async function loadNextChunk(container = null) {
                         </div>`;
                 });
 
-                // Update Swiper Virtual Slides
                 currentSwiper.virtual.slides = allSlides;
                 currentSwiper.virtual.update(true);
                 
-
                 setTimeout(() => { if (currentSwiper) currentSwiper.update(); }, 100);
 
             } else {
-                // Logic for Standard Gallery Grid (if not using Virtual/Swiper)
                 const galleryGrid = document.querySelector('.gallery-grid');
                 if (galleryGrid) {
                     result.images.forEach(img => {
@@ -1245,11 +1109,9 @@ export async function loadNextChunk(container = null) {
                 }
             }
 
-            // 5. General UI Refresh (Context buttons, etc.)
             const container = document.querySelector('.image-deck-container');
             if (container && typeof updateUI === 'function') updateUI(container);
 
-            // Success Feedback
             if (loadingIndicator) {
                 loadingIndicator.textContent = `✓ Loaded ${result.images.length} new items`;
                 setTimeout(() => { loadingIndicator.style.display = 'none'; }, 2000);
@@ -1273,7 +1135,6 @@ export async function loadNextChunk(container = null) {
 }
 
 export function closeDeck() {
-    // Cleanup event listeners
     cleanupFunctions.forEach(cleanup => cleanup());
     cleanupFunctions = [];
     
