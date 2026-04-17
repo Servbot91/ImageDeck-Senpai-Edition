@@ -4,6 +4,7 @@ import { setCurrentSwiper } from './metadata.js';
 import { initSwiper } from './swiper.js';
 import { isMobile } from './utils.js';
 import { GALLERY_ICON_SVG } from './constants.js';
+import { parseUrlFilters } from './filters.js'; 
 
 let chunkLoadTimeout = null;
 let pluginConfig = null;
