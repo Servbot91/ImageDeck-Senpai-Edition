@@ -222,71 +222,67 @@ function showGalleryTagFilter() {
     let includedTags = [];
     let excludedTags = [];
     
-    // Load currently applied tags if any
-	const currentFilter = sessionStorage.getItem('galleryTagFilter');
-	if (currentFilter) {
-		try {
-			const filterObj = JSON.parse(currentFilter);
-			includedTags = filterObj.included || [];
-			excludedTags = filterObj.excluded || [];
-			
-			// Update the UI to reflect current selections
-			setTimeout(() => {
-				if (includedSearchInput.value.trim().length >= 2) {
-					includedSearchInput.dispatchEvent(new Event('input'));
-				}
-				if (excludedSearchInput.value.trim().length >= 2) {
-					excludedSearchInput.dispatchEvent(new Event('input'));
-				}
-			}, 100);
-		} catch (e) {
-			console.error('Error parsing current filter:', e);
-		}
-	}
-    
-    // Included tags search
-    includedSearchInput.addEventListener('input', async (e) => {
-        const query = e.target.value.trim();
-        if (query.length >= 2) {
-            try {
-                const tags = await searchTags(query);
-                renderTagList(tags, includedTagList, includedTags, 'included');
-            } catch (error) {
-                console.error('Error searching tags:', error);
-                includedTagList.innerHTML = '<div style="color: #ff6b6b; padding: 8px;">Error loading tags</div>';
+    // NEW: Define the setupTagSearch function here
+    function setupTagSearch(inputElement, tagListContainer, selectedTags, type) {
+        let searchTimeout;
+        
+        inputElement.addEventListener('input', async (e) => {
+            clearTimeout(searchTimeout);
+            const query = e.target.value.trim();
+            
+            // Even with 1 character, try to search (more permissive)
+            if (query.length >= 1) {
+                searchTimeout = setTimeout(async () => {
+                    try {
+                        const tags = await searchTags(query);
+                        renderTagList(tags, tagListContainer, selectedTags, type);
+                    } catch (error) {
+                        console.error('Error searching tags:', error);
+                        tagListContainer.innerHTML = '<div style="color: #ff6b6b; padding: 8px;">Error loading tags</div>';
+                    }
+                }, 300); // Keep the debounce but be more responsive
+            } else {
+                tagListContainer.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type to search tags</div>';
             }
-        } else {
-            includedTagList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
-        }
-    });
-    
-    // Excluded tags search
-    excludedSearchInput.addEventListener('input', async (e) => {
-        const query = e.target.value.trim();
-        if (query.length >= 2) {
-            try {
-                const tags = await searchTags(query);
-                renderTagList(tags, excludedTagList, excludedTags, 'excluded');
-            } catch (error) {
-                console.error('Error searching tags:', error);
-                excludedTagList.innerHTML = '<div style="color: #ff6b6b; padding: 8px;">Error loading tags</div>';
-            }
-        } else {
-            excludedTagList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
-        }
-    });
-    
-    // Trigger initial search if there's text
-    if (includedSearchInput.value.trim().length >= 2) {
-        includedSearchInput.dispatchEvent(new Event('input'));
-    } else {
-        includedTagList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
+        });
     }
     
-    if (excludedSearchInput.value.trim().length >= 2) {
+    // Load currently applied tags if any
+    const currentFilter = sessionStorage.getItem('galleryTagFilter');
+    if (currentFilter) {
+        try {
+            const filterObj = JSON.parse(currentFilter);
+            includedTags = filterObj.included || [];
+            excludedTags = filterObj.excluded || [];
+            
+            // Update the UI to reflect current selections
+            setTimeout(() => {
+                if (includedSearchInput.value.trim().length >= 1) {
+                    includedSearchInput.dispatchEvent(new Event('input'));
+                }
+                if (excludedSearchInput.value.trim().length >= 1) {
+                    excludedSearchInput.dispatchEvent(new Event('input'));
+                }
+            }, 100);
+        } catch (e) {
+            console.error('Error parsing current filter:', e);
+        }
+    }
+    
+    setupTagSearch(includedSearchInput, includedTagList, includedTags, 'included');
+    setupTagSearch(excludedSearchInput, excludedTagList, excludedTags, 'excluded');    
+    
+    // Trigger initial search if there's text
+    if (includedSearchInput.value.trim().length >= 1) {
+        includedSearchInput.dispatchEvent(new Event('input'));
+    } else {
+        includedTagList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type to search tags</div>';
+    }
+    
+    if (excludedSearchInput.value.trim().length >= 1) {
         excludedSearchInput.dispatchEvent(new Event('input'));
     } else {
-        excludedTagList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
+        excludedTagList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type to search tags</div>';
     }
     
     // Apply filter button

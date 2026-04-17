@@ -158,6 +158,72 @@ async function updateDeckContentWithFilter() {
     }
 }
 
+async function restoreFilterDisplayOnOpen(container) {
+    const currentTags = getCurrentFilterTags();
+    
+    if (currentTags.included.length > 0 || currentTags.excluded.length > 0) {
+        // Get tag names
+        const allTagIds = [...currentTags.included, ...currentTags.excluded];
+        const tagNames = await getTagNames(allTagIds);
+        
+        const filterDisplay = document.createElement('div');
+        filterDisplay.className = 'image-deck-current-filters';
+        filterDisplay.style.cssText = 'position: absolute; top: 60px; left: 20px; right: 20px; z-index: 10; display: flex; flex-wrap: wrap; gap: 5px;';
+        
+        let filterHtml = '<span style="color: #ccc; font-size: 12px; background: rgba(0,0,0,0.5); padding: 2px 8px; border-radius: 10px;">FILTERED BY:</span>';
+        
+        // Add included tags
+        filterHtml += currentTags.included.map(tagId => {
+            const tagName = tagNames[tagId] || `Tag:${tagId}`;
+            return `
+                <span class="filter-tag-display" data-tag-id="${tagId}" style="color: white; font-size: 12px; background: rgba(46, 204, 113, 0.7); padding: 2px 8px; border-radius: 10px; display: flex; align-items: center;">
+                    ✅ ${tagName}
+                    <button class="remove-filter-tag" data-tag-id="${tagId}" style="background: none; border: none; color: white; margin-left: 5px; cursor: pointer; font-size: 14px;">×</button>
+                </span>`;
+        }).join('');
+        
+        // Add excluded tags
+        filterHtml += currentTags.excluded.map(tagId => {
+            const tagName = tagNames[tagId] || `Tag:${tagId}`;
+            return `
+                <span class="filter-tag-display" data-tag-id="${tagId}" style="color: white; font-size: 12px; background: rgba(231, 76, 60, 0.7); padding: 2px 8px; border-radius: 10px; display: flex; align-items: center;">
+                    ❌ ${tagName}
+                    <button class="remove-filter-tag" data-tag-id="${tagId}" style="background: none; border: none; color: white; margin-left: 5px; cursor: pointer; font-size: 14px;">×</button>
+                </span>`;
+        }).join('');
+        
+        filterDisplay.innerHTML = filterHtml;
+        container.insertBefore(filterDisplay, container.querySelector('.image-deck-progress'));
+        
+        // Add event listeners to remove buttons
+        setTimeout(() => {
+            filterDisplay.querySelectorAll('.remove-filter-tag').forEach(button => {
+                button.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    const tagId = button.dataset.tagId;
+                    const currentTags = getCurrentFilterTags();
+                    
+                    // Remove from either included or excluded list
+                    let newIncluded = currentTags.included.filter(id => id !== tagId);
+                    let newExcluded = currentTags.excluded.filter(id => id !== tagId);
+                    
+                    if (newIncluded.length > 0 || newExcluded.length > 0) {
+                        const filterObj = {
+                            included: newIncluded,
+                            excluded: newExcluded
+                        };
+                        sessionStorage.setItem('galleryTagFilter', JSON.stringify(filterObj));
+                    } else {
+                        sessionStorage.removeItem('galleryTagFilter');
+                    }
+                    
+                    window.dispatchEvent(new CustomEvent('galleryTagFilterChanged'));
+                });
+            });
+        }, 0);
+    }
+}
+
 async function forceRefreshGalleryCovers() {
     console.log('[Image Deck] Force refreshing gallery covers');
     
@@ -477,6 +543,7 @@ export async function openDeck(targetImageId = null) {
 
         // Initial UI update
         updateUI(container);
+		await restoreFilterDisplayOnOpen(container);
 
         // Setup event handlers
         import('./controls.js').then(module => {

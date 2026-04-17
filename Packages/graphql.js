@@ -109,7 +109,7 @@ export async function updateImageTags(imageId, tagIds) {
     }
 }
 
-// Search for tags
+
 export async function searchTags(query) {
     const gql = `query FindTags($filter: FindFilterType, $tag_filter: TagFilterType) {
         findTags(filter: $filter, tag_filter: $tag_filter) {
@@ -120,26 +120,50 @@ export async function searchTags(query) {
         }
     }`;
 
-    const variables = {
-        filter: { per_page: 20, q: query },
-        tag_filter: {}
-    };
+    const searchTerm = query.trim();
+    if (!searchTerm) {
+        return [];
+    }
 
     try {
-        const response = await fetch('/graphql', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query: gql, variables })
-        });
+        // Try multiple approaches for better fuzzy matching
+        const approaches = [
+            // Direct search first
+            { q: searchTerm },
+            // Try with wildcards if direct search yields few/no results
+            { q: `*${searchTerm}*` },
+        ];
 
-        const data = await response.json();
-        return data?.data?.findTags?.tags || [];
+        for (const filter of approaches) {
+            const variables = {
+                filter: { 
+                    per_page: 20, 
+                    ...filter
+                },
+                tag_filter: {}
+            };
+
+            const response = await fetch('/graphql', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: gql, variables })
+            });
+
+            const data = await response.json();
+            const tags = data?.data?.findTags?.tags || [];
+            
+            // If we got reasonable results, return them
+            if (tags.length > 0) {
+                return tags;
+            }
+        }
+        
+        return [];
     } catch (error) {
         console.error('[Image Deck] Error searching tags:', error);
         return [];
     }
 }
-
 
 export async function fetchGalleriesByTags(tagIds, page = 1, perPage = 50) {
     const query = `query FindGalleries($filter: FindFilterType!, $gallery_filter: GalleryFilterType) {
