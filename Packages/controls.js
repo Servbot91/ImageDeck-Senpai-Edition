@@ -77,8 +77,12 @@ function updateFullscreenUI(isFullscreen) {
     if (container) {
         if (isFullscreen) {
             container.classList.add('fullscreen-mode');
+            // Hide all UI elements in fullscreen mode
+            updateControlVisibility(false);
         } else {
             container.classList.remove('fullscreen-mode');
+            // Show all UI elements when exiting fullscreen
+            updateControlVisibility(true);
         }
     }
 }
@@ -90,23 +94,49 @@ function updateControlVisibility(isVisible = true) {
     const controlsWrapper = container.querySelector('.image-deck-controls-wrapper');
     const topBar = container.querySelector('.image-deck-topbar');
     const speedIndicator = container.querySelector('.image-deck-speed');
+    const filterDisplay = container.querySelector('.image-deck-current-filters');
     
     const opacity = isVisible ? '1' : '0';
-    const display = isVisible ? 'flex' : 'none';
+    const pointerEvents = isVisible ? 'auto' : 'none';
     
     if (topBar) {
         topBar.style.opacity = opacity;
-        topBar.style.pointerEvents = isVisible ? 'auto' : 'none';
+        topBar.style.pointerEvents = pointerEvents;
     }
     
     if (controlsWrapper) {
         controlsWrapper.style.opacity = opacity;
-        controlsWrapper.style.pointerEvents = isVisible ? 'auto' : 'none';
+        controlsWrapper.style.pointerEvents = pointerEvents;
     }
     
     if (speedIndicator) {
         speedIndicator.style.opacity = opacity;
-        speedIndicator.style.pointerEvents = isVisible ? 'auto' : 'none';
+        speedIndicator.style.pointerEvents = pointerEvents;
+    }
+    
+    if (filterDisplay) {
+        filterDisplay.style.opacity = opacity;
+        filterDisplay.style.pointerEvents = pointerEvents;
+    }
+    
+    // Special handling for fullscreen - always hide in fullscreen regardless of isVisible param
+    if (document.fullscreenElement) {
+        if (topBar) {
+            topBar.style.opacity = '0';
+            topBar.style.pointerEvents = 'none';
+        }
+        if (controlsWrapper) {
+            controlsWrapper.style.opacity = '0';
+            controlsWrapper.style.pointerEvents = 'none';
+        }
+        if (speedIndicator) {
+            speedIndicator.style.opacity = '0';
+            speedIndicator.style.pointerEvents = 'none';
+        }
+        if (filterDisplay) {
+            filterDisplay.style.opacity = '0';
+            filterDisplay.style.pointerEvents = 'none';
+        }
     }
 }
 
@@ -384,22 +414,27 @@ function showGalleryTagFilter() {
         modal.remove();
     });
     
-    const clearBtn = modal.querySelector('.clear-tag-filter');
-    clearBtn.addEventListener('click', () => {
-        includedTags = [];
-        excludedTags = [];
-        includedPerformers = [];
-        excludedPerformers = [];
-        includedSearchInput.value = '';
-        excludedSearchInput.value = '';
-        includedPerformerSearchInput.value = '';
-        excludedPerformerSearchInput.value = '';
-        includedTagList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
-        excludedTagList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
-        includedPerformerList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
-        excludedPerformerList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
-        clearGalleryTagFilter();
-    });
+		const clearBtn = modal.querySelector('.clear-tag-filter');
+		clearBtn.addEventListener('click', () => {
+			includedTags = [];
+			excludedTags = [];
+			includedPerformers = [];
+			excludedPerformers = [];
+			includedSearchInput.value = '';
+			excludedSearchInput.value = '';
+			includedPerformerSearchInput.value = '';
+			excludedPerformerSearchInput.value = '';
+			includedTagList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
+			excludedTagList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
+			includedPerformerList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
+			excludedPerformerList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
+			clearGalleryTagFilter();
+			
+			// Trigger immediate refresh when clearing
+			window.dispatchEvent(new CustomEvent('updateDeckContent', { 
+				detail: { tagIds: [] } 
+			}));
+		});
 }
 
 function renderPerformerList(performers, container, selectedPerformers, type) {

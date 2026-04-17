@@ -88,6 +88,11 @@ export function detectContext() {
         }
         
         // Use 'images' type when in image mode, otherwise 'galleries'
+        // DEFAULT SORT: newest first (desc)
+        if (!filters) filters = {};
+        if (!filters.sortBy) filters.sortBy = 'created_at';
+        if (!filters.sortDir) filters.sortDir = 'desc';
+        
         return { 
             type: isImageMode ? 'images' : 'galleries', 
             isGalleryListing: !isImageMode, 
@@ -102,16 +107,21 @@ export function detectContext() {
         const galleryIdMatch = path.match(/^\/galleries\/(\d+)/);
         
         if (galleryIdMatch) {
-            const filter = parseUrlFilters(search);
+            let singleGalleryFilters = parseUrlFilters(search);
             // Default sorting for single gallery
             if (!new URLSearchParams(search).get('sortby') && !new URLSearchParams(search).get('sortdir')) {
-                filter.sortBy = 'title';
-                filter.sortDir = 'asc';
+                singleGalleryFilters.sortBy = 'title';
+                singleGalleryFilters.sortDir = 'asc';
             }
-            return { type: 'galleries', id: galleryIdMatch[1], hash, isSingleGallery: true, filter };
+            return { type: 'galleries', id: galleryIdMatch[1], hash, isSingleGallery: true, filter: singleGalleryFilters };
         } else {
             // Gallery listing page
-            let filters = parseUrlFilters(search);
+            let galleryFilters = parseUrlFilters(search);
+            
+            // DEFAULT SORT: newest first (desc)
+            if (!galleryFilters) galleryFilters = {};
+            if (!galleryFilters.sortBy) galleryFilters.sortBy = 'created_at';
+            if (!galleryFilters.sortDir) galleryFilters.sortDir = 'desc';
             
             const tagFilter = sessionStorage.getItem('galleryTagFilter');
             if (tagFilter) {
@@ -121,20 +131,20 @@ export function detectContext() {
                     // Handle tag filters
                     if ((filterObj.includedTags && filterObj.includedTags.length > 0) || 
                         (filterObj.excludedTags && filterObj.excludedTags.length > 0)) {
-                        if (!filters) {
-                            filters = {};
+                        if (!galleryFilters) {
+                            galleryFilters = {};
                         }
                         if (filterObj.includedTags && filterObj.includedTags.length > 0) {
-                            filters.tags = {
+                            galleryFilters.tags = {
                                 value: filterObj.includedTags,
                                 modifier: "INCLUDES"
                             };
                         }
                         if (filterObj.excludedTags && filterObj.excludedTags.length > 0) {
-                            if (filters.tags) {
-                                filters.tags.excluded = filterObj.excludedTags;
+                            if (galleryFilters.tags) {
+                                galleryFilters.tags.excluded = filterObj.excludedTags;
                             } else {
-                                filters.tags = {
+                                galleryFilters.tags = {
                                     value: [],
                                     modifier: "INCLUDES",
                                     excluded: filterObj.excludedTags
@@ -146,20 +156,20 @@ export function detectContext() {
                     // Handle performer filters
                     if ((filterObj.includedPerformers && filterObj.includedPerformers.length > 0) || 
                         (filterObj.excludedPerformers && filterObj.excludedPerformers.length > 0)) {
-                        if (!filters) {
-                            filters = {};
+                        if (!galleryFilters) {
+                            galleryFilters = {};
                         }
                         if (filterObj.includedPerformers && filterObj.includedPerformers.length > 0) {
-                            filters.performers = {
+                            galleryFilters.performers = {
                                 value: filterObj.includedPerformers,
                                 modifier: "INCLUDES"
                             };
                         }
                         if (filterObj.excludedPerformers && filterObj.excludedPerformers.length > 0) {
-                            if (filters.performers) {
-                                filters.performers.excluded = filterObj.excludedPerformers;
+                            if (galleryFilters.performers) {
+                                galleryFilters.performers.excluded = filterObj.excludedPerformers;
                             } else {
-                                filters.performers = {
+                                galleryFilters.performers = {
                                     value: [],
                                     modifier: "INCLUDES",
                                     excluded: filterObj.excludedPerformers
@@ -172,18 +182,83 @@ export function detectContext() {
                 }
             }
             
-            return { type: 'galleries', isGalleryListing: true, filter: filters, hash };
+            return { type: 'galleries', isGalleryListing: true, filter: galleryFilters, hash };
         }
     }
 
-    // Handle images pages
+    // Handle images pages - THIS IS THE KEY PART THAT WAS MISSING PROPER FILTER HANDLING
     if (path.startsWith('/images')) {
-        const filters = parseUrlFilters(search);
+        let imageFilters = parseUrlFilters(search);
+        // DEFAULT SORT: newest first (desc)
+        if (!imageFilters) imageFilters = {};
+        if (!imageFilters.sortBy) imageFilters.sortBy = 'created_at';
+        if (!imageFilters.sortDir) imageFilters.sortDir = 'desc';
+        
+        // ADD FILTER HANDLING FOR IMAGES TOO!
+        const tagFilter = sessionStorage.getItem('galleryTagFilter');
+        if (tagFilter) {
+            try {
+                const filterObj = JSON.parse(tagFilter);
+                
+                // Handle tag filters for images
+                if ((filterObj.includedTags && filterObj.includedTags.length > 0) || 
+                    (filterObj.excludedTags && filterObj.excludedTags.length > 0)) {
+                    if (!imageFilters) {
+                        imageFilters = {};
+                    }
+                    if (filterObj.includedTags && filterObj.includedTags.length > 0) {
+                        imageFilters.tags = {
+                            value: filterObj.includedTags,
+                            modifier: "INCLUDES"
+                        };
+                    }
+                    if (filterObj.excludedTags && filterObj.excludedTags.length > 0) {
+                        if (imageFilters.tags) {
+                            imageFilters.tags.excluded = filterObj.excludedTags;
+                        } else {
+                            imageFilters.tags = {
+                                value: [],
+                                modifier: "INCLUDES",
+                                excluded: filterObj.excludedTags
+                            };
+                        }
+                    }
+                }
+                
+                // Handle performer filters for images
+                if ((filterObj.includedPerformers && filterObj.includedPerformers.length > 0) || 
+                    (filterObj.excludedPerformers && filterObj.excludedPerformers.length > 0)) {
+                    if (!imageFilters) {
+                        imageFilters = {};
+                    }
+                    if (filterObj.includedPerformers && filterObj.includedPerformers.length > 0) {
+                        imageFilters.performers = {
+                            value: filterObj.includedPerformers,
+                            modifier: "INCLUDES"
+                        };
+                    }
+                    if (filterObj.excludedPerformers && filterObj.excludedPerformers.length > 0) {
+                        if (imageFilters.performers) {
+                            imageFilters.performers.excluded = filterObj.excludedPerformers;
+                        } else {
+                            imageFilters.performers = {
+                                value: [],
+                                modifier: "INCLUDES",
+                                excluded: filterObj.excludedPerformers
+                            };
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('Error parsing tag filter for images:', e);
+            }
+        }
+        
         return {
             type: 'images',
             isFilteredView: !!search, 
             isGeneralListing: !search, 
-            filter: filters,
+            filter: imageFilters,
             hash: hash
         };
     }
@@ -201,41 +276,155 @@ export function detectContext() {
             type = 'galleries';
         }
         
-        // Build filter for this performer
-        const filter = {
+        // Build filter for this performer with DEFAULT SORT: newest first (desc)
+        let performerFilters = {
             performers: { value: [performerId], modifier: "INCLUDES" },
-            sortBy: filters?.sortBy || 'created_at',
-            sortDir: filters?.sortDir || 'desc'
+            sortBy: 'created_at',
+            sortDir: 'desc'
         };
         
-        // Copy other filters from URL if present
-        Object.keys(filters || {}).forEach(key => {
-            if (key !== 'performers' && key !== 'sortBy' && key !== 'sortDir') {
-                filter[key] = filters[key];
+        // Override with URL filters if present
+        const urlFilters = parseUrlFilters(search);
+        if (urlFilters) {
+            Object.assign(performerFilters, urlFilters);
+        }
+        
+        // ALSO APPLY SESSION FILTERS TO PERFORMER CONTEXT
+        const tagFilter = sessionStorage.getItem('galleryTagFilter');
+        if (tagFilter) {
+            try {
+                const filterObj = JSON.parse(tagFilter);
+                
+                // Handle tag filters
+                if ((filterObj.includedTags && filterObj.includedTags.length > 0) || 
+                    (filterObj.excludedTags && filterObj.excludedTags.length > 0)) {
+                    if (filterObj.includedTags && filterObj.includedTags.length > 0) {
+                        performerFilters.tags = {
+                            value: filterObj.includedTags,
+                            modifier: "INCLUDES"
+                        };
+                    }
+                    if (filterObj.excludedTags && filterObj.excludedTags.length > 0) {
+                        if (performerFilters.tags) {
+                            performerFilters.tags.excluded = filterObj.excludedTags;
+                        } else {
+                            performerFilters.tags = {
+                                value: [],
+                                modifier: "INCLUDES",
+                                excluded: filterObj.excludedTags
+                            };
+                        }
+                    }
+                }
+                
+                // Handle performer filters (additional filtering)
+                if ((filterObj.includedPerformers && filterObj.includedPerformers.length > 0) || 
+                    (filterObj.excludedPerformers && filterObj.excludedPerformers.length > 0)) {
+                    if (filterObj.includedPerformers && filterObj.includedPerformers.length > 0) {
+                        if (performerFilters.performers) {
+                            // Combine with existing performer filter
+                            const combinedPerformers = [...new Set([...performerFilters.performers.value, ...filterObj.includedPerformers])];
+                            performerFilters.performers.value = combinedPerformers;
+                        } else {
+                            performerFilters.performers = {
+                                value: filterObj.includedPerformers,
+                                modifier: "INCLUDES"
+                            };
+                        }
+                    }
+                    if (filterObj.excludedPerformers && filterObj.excludedPerformers.length > 0) {
+                        if (performerFilters.performers) {
+                            performerFilters.performers.excluded = filterObj.excludedPerformers;
+                        } else {
+                            performerFilters.performers = {
+                                value: [performerId],
+                                modifier: "INCLUDES",
+                                excluded: filterObj.excludedPerformers
+                            };
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('Error parsing tag filter for performer:', e);
             }
-        });
+        }
         
         return { 
             type, 
             id: performerId,
             performerId: performerId,
             isPerformerContext: true,
-            filter,
+            filter: performerFilters,
             hash 
         };
     }
 
-    // Fallback to visible images
-    if (document.querySelectorAll('img[src*="/image/"]').length > 0) {
-        return {
-            type: 'images',
-            isGeneralListing: true,
-            filter: parseUrlFilters(search),
-            hash: hash
-        };
+    // Fallback to visible images with DEFAULT SORT: newest first (desc)
+    let fallbackFilters = parseUrlFilters(search);
+    if (!fallbackFilters) fallbackFilters = {};
+    if (!fallbackFilters.sortBy) fallbackFilters.sortBy = 'created_at';
+    if (!fallbackFilters.sortDir) fallbackFilters.sortDir = 'desc';
+    
+    // ALSO APPLY FILTERS TO FALLBACK
+    const tagFilter = sessionStorage.getItem('galleryTagFilter');
+    if (tagFilter) {
+        try {
+            const filterObj = JSON.parse(tagFilter);
+            
+            if ((filterObj.includedTags && filterObj.includedTags.length > 0) || 
+                (filterObj.excludedTags && filterObj.excludedTags.length > 0)) {
+                if (!fallbackFilters) fallbackFilters = {};
+                if (filterObj.includedTags && filterObj.includedTags.length > 0) {
+                    fallbackFilters.tags = {
+                        value: filterObj.includedTags,
+                        modifier: "INCLUDES"
+                    };
+                }
+                if (filterObj.excludedTags && filterObj.excludedTags.length > 0) {
+                    if (fallbackFilters.tags) {
+                        fallbackFilters.tags.excluded = filterObj.excludedTags;
+                    } else {
+                        fallbackFilters.tags = {
+                            value: [],
+                            modifier: "INCLUDES",
+                            excluded: filterObj.excludedTags
+                        };
+                    }
+                }
+            }
+            
+            if ((filterObj.includedPerformers && filterObj.includedPerformers.length > 0) || 
+                (filterObj.excludedPerformers && filterObj.excludedPerformers.length > 0)) {
+                if (!fallbackFilters) fallbackFilters = {};
+                if (filterObj.includedPerformers && filterObj.includedPerformers.length > 0) {
+                    fallbackFilters.performers = {
+                        value: filterObj.includedPerformers,
+                        modifier: "INCLUDES"
+                    };
+                }
+                if (filterObj.excludedPerformers && filterObj.excludedPerformers.length > 0) {
+                    if (fallbackFilters.performers) {
+                        fallbackFilters.performers.excluded = filterObj.excludedPerformers;
+                    } else {
+                        fallbackFilters.performers = {
+                            value: [],
+                            modifier: "INCLUDES",
+                            excluded: filterObj.excludedPerformers
+                        };
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('Error parsing tag filter for fallback:', e);
+        }
     }
-
-    return null;
+    
+    return {
+        type: 'images',
+        isGeneralListing: true,
+        filter: fallbackFilters,
+        hash: hash
+    };
 }
 
 export function getVisibleImages() {

@@ -479,6 +479,13 @@ export async function applyGalleryTagFilter(includedTags, excludedTags, included
     window.dispatchEvent(new CustomEvent('galleryTagFilterChanged', { 
         detail: { includedTags, excludedTags, includedPerformers, excludedPerformers } 
     }));
+    
+    // Immediately trigger content refresh for ALL contexts
+    setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('updateDeckContent', { 
+            detail: { includedTags, excludedTags, includedPerformers, excludedPerformers } 
+        }));
+    }, 100);
 }
 
 
@@ -487,6 +494,13 @@ export function clearGalleryTagFilter() {
     window.dispatchEvent(new CustomEvent('galleryTagFilterChanged', { 
         detail: { includedTags: [], excludedTags: [], includedPerformers: [], excludedPerformers: [] } 
     }));
+    
+    // Immediately trigger content refresh when clearing
+    setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('updateDeckContent', { 
+            detail: { includedTags: [], excludedTags: [], includedPerformers: [], excludedPerformers: [] } 
+        }));
+    }, 100);
 }
 
 export function detectContextWithFilter() {

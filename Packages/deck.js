@@ -419,36 +419,52 @@ export async function openDeck(targetImageId = null) {
         }
         
         // Handle performer contexts specifically
-        const path = window.location.pathname;
-        const performerMatch = path.match(/^\/performers\/(\d+)(?:\/(galleries|images))?/);
-        if (performerMatch) {
-            const [, performerId, viewType] = performerMatch;
-            
-            // Determine mode based on URL, stored preference, or default
-            let type = 'galleries';
-            if (viewType === 'images' || storedMode === 'image') {
-                type = 'images';
-            } else if (viewType === 'galleries' || storedMode === 'gallery') {
-                type = 'galleries';
-            }
-            
-            // Preserve existing filters and ensure performer filter is included
-            const existingFilters = detectedContext?.filter || {};
-            if (!existingFilters.performers) {
-                existingFilters.performers = {
-                    value: [performerId],
-                    modifier: "INCLUDES"
-                };
-            }
-            
-            detectedContext = {
-                type: type,
-                id: performerId,
-                performerId: performerId,
-                isPerformerContext: true,
-                filter: existingFilters
-            };
-        }
+		const path = window.location.pathname;
+		const performerMatch = path.match(/^\/performers\/(\d+)(?:\/(galleries|images))?/);
+		if (performerMatch) {
+			const [, performerId, viewType] = performerMatch;
+			
+			// Determine mode based on URL, stored preference, or default
+			let type = 'galleries';
+			if (viewType === 'images' || storedMode === 'image') {
+				type = 'images';
+			} else if (viewType === 'galleries' || storedMode === 'gallery') {
+				type = 'galleries';
+			}
+			
+			// Preserve existing filters and ensure performer filter is included
+			const existingFilters = detectedContext?.filter || {};
+			if (!existingFilters.performers) {
+				existingFilters.performers = {
+					value: [performerId],
+					modifier: "INCLUDES"
+				};
+			}
+			
+			// Ensure default sorting if not specified
+			if (!existingFilters.sortBy) existingFilters.sortBy = 'created_at';
+			if (!existingFilters.sortDir) existingFilters.sortDir = 'desc';
+			
+			detectedContext = {
+				type: type,
+				id: performerId,
+				performerId: performerId,
+				isPerformerContext: true,
+				filter: existingFilters
+			};
+		}
+
+		if (!detectedContext) {
+			console.log('[Image Deck] No context detected, defaulting to galleries');
+			detectedContext = {
+				type: 'galleries',
+				isGalleryListing: true,
+				filter: {
+					sortBy: 'created_at',
+					sortDir: 'desc'  
+				}
+			};
+}
 
         // Handle tag filters from sessionStorage
         const tagFilter = sessionStorage.getItem('galleryTagFilter');
@@ -643,14 +659,14 @@ export async function openDeck(targetImageId = null) {
             });
         });
         
-        const filterUpdateListener = (e) => {
-            console.log('[Image Deck] Received updateDeckContent event:', e.detail);
-            setTimeout(() => {
-                forceRefreshGalleryCovers();
-            }, 100); 
-        };
+		const filterUpdateListener = (e) => {
+			console.log('[Image Deck] Received updateDeckContent event:', e.detail);
+			setTimeout(() => {
+				forceRefreshGalleryCovers();
+			}, 100); 
+		};
 
-        window.addEventListener('updateDeckContent', filterUpdateListener);
+		window.addEventListener('updateDeckContent', filterUpdateListener);
         cleanupFunctions.push(() => {
             window.removeEventListener('updateDeckContent', filterUpdateListener);
         });
@@ -950,79 +966,83 @@ function updateUI(container) {
                 
                 topBar.appendChild(modeIndicator);
                 
-                modeIndicator.addEventListener('click', async () => {
-                    const currentMode = contextInfo?.type === 'galleries' ? 'gallery' : 'image';
-                    const newMode = currentMode === 'gallery' ? 'image' : 'gallery';
+			modeIndicator.addEventListener('click', async () => {
+				const currentMode = contextInfo?.type === 'galleries' ? 'gallery' : 'image';
+				const newMode = currentMode === 'gallery' ? 'image' : 'gallery';
 
-                    // Store the new mode
-                    sessionStorage.setItem('imageDeckMode', newMode);
-                    
-                    // Get current filters to preserve them
-                    const currentFilters = {...(contextInfo?.filter || {})};
-                    
-                    // Handle performer context properly
-                    if (contextInfo?.performerId) {
-                        // Ensure performer filter is maintained
-                        if (!currentFilters.performers) {
-                            currentFilters.performers = {
-                                value: [contextInfo.performerId],
-                                modifier: "INCLUDES"
-                            };
-                        }
-                        
-                        // Update URL based on new mode
-                        let newPath = `/performers/${contextInfo.performerId}`;
-                        if (newMode === 'gallery') {
-                            newPath += '/galleries';
-                        } else {
-                            newPath += '/images';
-                        }
-                        
-                        history.pushState({}, '', newPath);
-                        
-                        // Update context for the new mode with preserved filters
-                        const newContext = {
-                            type: newMode === 'gallery' ? 'galleries' : 'images',
-                            performerId: contextInfo.performerId,
-                            isPerformerContext: true,
-                            filter: currentFilters
-                        };
-                        
-                        // Close and reopen with new context
-                        import('./deck.js').then(module => {
-                            module.closeDeck();
-                            setTimeout(() => {
-                                module.openDeck();
-                            }, 100);
-                        });
-                    } else {
-                        // For general contexts (not performer-specific)
-                        let basePath = '/';
-                        if (newMode === 'gallery') {
-                            basePath = '/galleries';
-                        } else {
-                            basePath = '/images';
-                        }
-                        
-                        history.pushState({}, '', basePath);
-                        
-                        // Update context for the new mode with preserved filters
-                        const newContext = {
-                            type: newMode === 'gallery' ? 'galleries' : 'images',
-                            isGalleryListing: newMode === 'gallery',
-                            isGeneralListing: newMode === 'image',
-                            filter: currentFilters
-                        };
-                        
-                        // Close and reopen with new context
-                        import('./deck.js').then(module => {
-                            module.closeDeck();
-                            setTimeout(() => {
-                                module.openDeck();
-                            }, 100);
-                        });
-                    }
-                });
+				// Store the new mode
+				sessionStorage.setItem('imageDeckMode', newMode);
+				
+				// Get current filters to preserve them including sort settings
+				const currentFilters = {...(contextInfo?.filter || {})};
+				
+				// Ensure sorting is preserved
+				if (!currentFilters.sortBy) currentFilters.sortBy = 'created_at';
+				if (!currentFilters.sortDir) currentFilters.sortDir = 'desc';
+				
+				// Handle performer context properly
+				if (contextInfo?.performerId) {
+					// Ensure performer filter is maintained
+					if (!currentFilters.performers) {
+						currentFilters.performers = {
+							value: [contextInfo.performerId],
+							modifier: "INCLUDES"
+						};
+					}
+					
+					// Update URL based on new mode
+					let newPath = `/performers/${contextInfo.performerId}`;
+					if (newMode === 'gallery') {
+						newPath += '/galleries';
+					} else {
+						newPath += '/images';
+					}
+					
+					history.pushState({}, '', newPath);
+					
+					// Update context for the new mode with preserved filters
+					const newContext = {
+						type: newMode === 'gallery' ? 'galleries' : 'images',
+						performerId: contextInfo.performerId,
+						isPerformerContext: true,
+						filter: currentFilters
+					};
+					
+					// Close and reopen with new context
+					import('./deck.js').then(module => {
+						module.closeDeck();
+						setTimeout(() => {
+							module.openDeck();
+						}, 100);
+					});
+				} else {
+					// For general contexts (not performer-specific)
+					let basePath = '/';
+					if (newMode === 'gallery') {
+						basePath = '/galleries';
+					} else {
+						basePath = '/images';
+					}
+					
+					history.pushState({}, '', basePath);
+					
+					// Update context for the new mode with preserved filters
+					const newContext = {
+						type: newMode === 'gallery' ? 'galleries' : 'images',
+						isGalleryListing: newMode === 'gallery',
+						isGeneralListing: newMode === 'image',
+						filter: currentFilters
+					};
+					
+					// Close and reopen with new context
+					import('./deck.js').then(module => {
+						module.closeDeck();
+						setTimeout(() => {
+							module.openDeck();
+						}, 100);
+					});
+				}
+			});
             }
         }
         
