@@ -1,3 +1,51 @@
+function handleError(operation, error, defaultValue = null) {
+    console.error(`[Image Deck] Error in ${operation}:`, error);
+    return defaultValue;
+}
+
+export async function fetchGalleryMetadata(galleryId) {
+    const query = `query FindGallery($id: ID!) {
+        findGallery(id: $id) {
+            created_at
+            date
+            details
+            id
+            image_count
+            organized
+            rating100
+            title
+            updated_at
+            url
+            urls
+        }
+    }`;
+
+    try {
+        const response = await safeFetch('/graphql', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query, variables: { id: galleryId } })
+        }, 'GraphQL fetchGalleryMetadata');
+
+        if (!response) return null;
+        
+        const data = await response.json();
+        return data?.data?.findGallery || null;
+    } catch (error) {
+        return handleError('fetchGalleryMetadata', error, null);
+    }
+}
+
+async function safeFetch(url, options, operationName = '') {
+    try {
+        const response = await fetch(url, options);
+        return response;
+    } catch (error) {
+        console.error(`[Image Deck] Error in ${operationName}:`, error);
+        return null;
+    }
+}
+
 export async function fetchImageMetadata(imageId) {
     const query = `query FindImage($id: ID!) {
         findImage(id: $id) {

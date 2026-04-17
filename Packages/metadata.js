@@ -1,5 +1,5 @@
 // ui/metadata.js
-import { fetchImageMetadata, updateImageMetadata, updateImageTags, searchTags } from './graphql.js';
+import { fetchImageMetadata, updateImageMetadata, updateImageTags, searchTags, fetchGalleryMetadata } from './graphql.js';
 
 let currentMetadata = null;
 let currentSwiperRef = null; // Reference to current swiper instance
@@ -18,23 +18,102 @@ export async function openMetadataModal() {
 
     const modal = document.querySelector('.image-deck-metadata-modal');
     const body = document.querySelector('.image-deck-metadata-body');
+    const header = document.querySelector('.image-deck-metadata-header h3');
 
-    if (!modal || !body) return;
+    if (!modal || !body || !header) return;
 
     // Show loading state
     body.innerHTML = '<div class="metadata-loading">Loading...</div>';
     modal.classList.add('active');
 
-    // Fetch detailed metadata
-    currentMetadata = await fetchImageMetadata(currentImage.id);
+    // Check if current slide is a gallery
+    const activeSlide = currentSwiperRef.slides[currentIndex];
+    const zoomContainer = activeSlide?.querySelector('.swiper-zoom-container');
+    const isGallery = zoomContainer?.dataset.type === 'gallery';
+
+    if (isGallery) {
+        // Update header for gallery
+        header.textContent = 'Gallery Details';
+        
+        // Extract gallery ID from URL
+        const galleryUrl = zoomContainer?.dataset.url;
+        if (galleryUrl) {
+            const galleryId = galleryUrl.split('/').pop();
+            currentMetadata = await fetchGalleryMetadata(galleryId);
+        }
+    } else {
+        // Update header for image
+        header.textContent = 'Image Details';
+        currentMetadata = await fetchImageMetadata(currentImage.id);
+    }
 
     if (!currentMetadata) {
         body.innerHTML = '<div class="metadata-error">Failed to load metadata</div>';
         return;
     }
 
-    // Populate modal
-    populateMetadataModal(currentMetadata);
+    // Populate modal based on type
+    if (isGallery) {
+        populateGalleryMetadataModal(currentMetadata);
+    } else {
+        populateImageMetadataModal(currentMetadata);
+    }
+}
+
+function populateGalleryMetadataModal(metadata) {
+    const body = document.querySelector('.image-deck-metadata-body');
+    if (!body) return;
+
+    body.innerHTML = `
+        <div class="metadata-section metadata-file-info">
+            <div class="metadata-filename" title="${metadata.title || 'Untitled'}">${metadata.title || 'Untitled'}</div>
+            <a href="${metadata.url}" target="_blank" class="metadata-link" title="Open gallery page in new tab">
+                View in Stash →
+            </a>
+        </div>
+
+        <div class="metadata-section">
+            <label>Title</label>
+            <input type="text" class="metadata-title" value="${metadata.title || ''}" placeholder="Enter title..." readonly>
+        </div>
+
+        <div class="metadata-section">
+            <label>Details</label>
+            <textarea class="metadata-details" placeholder="Enter details..." readonly>${metadata.details || ''}</textarea>
+        </div>
+
+        <div class="metadata-section">
+            <label>Info</label>
+            <div class="metadata-info">
+                ${metadata.date ? `<div><strong>Date:</strong> ${metadata.date}</div>` : ''}
+                ${metadata.image_count !== undefined ? `<div><strong>Image Count:</strong> ${metadata.image_count}</div>` : ''}
+                <div><strong>Created:</strong> ${metadata.created_at || 'Unknown'}</div>
+                <div><strong>Updated:</strong> ${metadata.updated_at || 'Unknown'}</div>
+                ${metadata.rating100 ? `<div><strong>Rating:</strong> ${metadata.rating100}/100</div>` : ''}
+                <div><strong>Organized:</strong> ${metadata.organized ? 'Yes' : 'No'}</div>
+            </div>
+        </div>
+
+        ${metadata.urls && metadata.urls.length > 0 ? `
+        <div class="metadata-section">
+            <label>URLs</label>
+            <div class="metadata-urls">
+                ${metadata.urls.map(url => 
+                    `<div><a href="${url}" target="_blank">${url}</a></div>`
+                ).join('')}
+            </div>
+        </div>` : ''}
+
+        ${metadata.custom_fields ? `
+        <div class="metadata-section">
+            <label>Custom Fields</label>
+            <div class="metadata-custom-fields">
+                ${Object.entries(metadata.custom_fields).map(([key, value]) => 
+                    `<div><strong>${key}:</strong> ${value}</div>`
+                ).join('')}
+            </div>
+        </div>` : ''}
+    `;
 }
 
 export function closeMetadataModal() {
@@ -45,7 +124,7 @@ export function closeMetadataModal() {
     currentMetadata = null;
 }
 
-function populateMetadataModal(metadata) {
+function populateImageMetadataModal(metadata) {
     const body = document.querySelector('.image-deck-metadata-body');
     if (!body) return;
 

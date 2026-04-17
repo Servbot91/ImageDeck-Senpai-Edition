@@ -16,10 +16,10 @@ export function getEffectOptions(effect, pluginConfig) {
     return configFn(pluginConfig.effectDepth);
 }
 
-// Memoized slide template function
+
 const memoizedGetSlideTemplate = (() => {
     const cache = new Map();
-    const TTL = 300000; // 5 minutes
+    const TTL = 300000; 
     
     return (img, contextInfo, isEager = false) => {
         const cacheKey = `${img.id || img.url}_${JSON.stringify(contextInfo)}_${isEager}`;
@@ -173,7 +173,6 @@ export function initSwiper(container, images, pluginConfig, updateUICallback, sa
 
     const swiper = new Swiper(swiperEl, swiperConfig);
     
-    // Store swiper in state
     state.setSwiper(swiper);
     state.setImages(images);
     

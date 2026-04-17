@@ -83,6 +83,30 @@ function updateFullscreenUI(isFullscreen) {
     }
 }
 
+function updateControlVisibility(isVisible = true) {
+    const container = document.querySelector('.image-deck-container');
+    if (!container) return;
+    
+    const controlsWrapper = container.querySelector('.image-deck-controls-wrapper');
+    const topBar = container.querySelector('.image-deck-topbar');
+    const speedIndicator = container.querySelector('.image-deck-speed');
+    
+    const opacity = isVisible ? '1' : '0';
+    const display = isVisible ? 'flex' : 'none'; // or keep display: flex and only change opacity
+    
+    if (topBar) {
+        topBar.style.opacity = opacity;
+    }
+    
+    if (controlsWrapper) {
+        controlsWrapper.style.opacity = opacity;
+    }
+    
+    if (speedIndicator) {
+        speedIndicator.style.opacity = opacity;
+    }
+}
+
 function isCurrentSlideGallery() {
     const swiper = state.getSwiper();
     if (swiper && swiper.slides) {
@@ -523,9 +547,10 @@ export function setupEventHandlers(container, callbacks = {}) {
 
     const swiper = state.getSwiper();
     if (swiper) {
-        const slideChangeListener = function() {
-            updateGalleryStateClass();
-        };
+		const slideChangeListener = function() {
+			updateGalleryStateClass();
+			updateControlVisibility(true);
+		};
         swiper.on('slideChangeTransitionEnd', slideChangeListener);
         storeElementData(container, { slideChangeListener });
         
