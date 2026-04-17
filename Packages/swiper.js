@@ -68,11 +68,11 @@ function getSlideTemplateImpl(img, contextInfo, isEager = false) {
     }
 
     return `
-        <div class="swiper-zoom-container">
+        <div class="swiper-zoom-container" data-type="image">
             <img src="${fullSrc}" alt="${title}" decoding="async" loading="${loading}" 
                  style="max-width: 100%; height: auto; display: block; margin: 0 auto;" />
         </div>`;
-};
+}
 
 export function initSwiper(container, images, pluginConfig, updateUICallback, savePositionCallback, contextInfo) {
     const swiperEl = container.querySelector('.swiper');

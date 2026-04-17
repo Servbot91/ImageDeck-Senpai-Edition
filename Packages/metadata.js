@@ -8,11 +8,12 @@ export function setCurrentSwiper(swiper) {
     currentSwiperRef = swiper;
 }
 
+
 export async function openMetadataModal() {
     if (!currentSwiperRef) return;
 
     const currentIndex = currentSwiperRef.activeIndex;
-    const currentImage = window.currentImages[currentIndex];
+    const currentImage = window.currentImages?.[currentIndex];
 
     if (!currentImage || !currentImage.id) return;
 
@@ -26,21 +27,26 @@ export async function openMetadataModal() {
     body.innerHTML = '<div class="metadata-loading">Loading...</div>';
     modal.classList.add('active');
 
-    // Check if current slide is a gallery
-    const activeSlide = currentSwiperRef.slides[currentIndex];
-    const zoomContainer = activeSlide?.querySelector('.swiper-zoom-container');
-    const isGallery = zoomContainer?.dataset.type === 'gallery';
+    // Determine if current item is a gallery based on data properties
+    // This is more reliable than DOM inspection for virtual slides
+    const isGallery = currentImage.isGallery || 
+                     currentImage.url || 
+                     (currentImage.image_count !== undefined) ||
+                     (currentImage.type === 'gallery');
 
     if (isGallery) {
         // Update header for gallery
         header.textContent = 'Gallery Details';
         
-        // Extract gallery ID from URL
-        const galleryUrl = zoomContainer?.dataset.url;
-        if (galleryUrl) {
-            const galleryId = galleryUrl.split('/').pop();
-            currentMetadata = await fetchGalleryMetadata(galleryId);
+        // Extract gallery ID from URL or use currentImage.id
+        let galleryId = currentImage.id;
+        if (currentImage.url) {
+            const urlMatch = currentImage.url.match(/\/galleries\/(\d+)/);
+            if (urlMatch) {
+                galleryId = urlMatch[1];
+            }
         }
+        currentMetadata = await fetchGalleryMetadata(galleryId);
     } else {
         // Update header for image
         header.textContent = 'Image Details';
