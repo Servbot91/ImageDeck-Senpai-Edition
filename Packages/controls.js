@@ -497,22 +497,27 @@ export function setupEventHandlers(container, callbacks = {}) {
         });
     }); 
 
-    const removeTagButtons = container.querySelectorAll('.remove-filter-tag');
-    removeTagButtons.forEach(button => {
-        eventManager.add(button, 'click', async (e) => {
-            e.stopPropagation();
-            const tagId = button.dataset.tagId;
-            const currentTags = getCurrentFilterTags();
-            const newTags = currentTags.filter(id => id !== tagId);
-            
-            if (newTags.length > 0) {
-                sessionStorage.setItem('galleryTagFilter', JSON.stringify(newTags));
-            } else {
-                sessionStorage.removeItem('galleryTagFilter');
-            }
-            window.dispatchEvent(new CustomEvent('galleryTagFilterChanged'));
-        });
-    });
+		const removeTagButtons = container.querySelectorAll('.remove-filter-tag');
+		removeTagButtons.forEach(button => {
+			eventManager.add(button, 'click', async (e) => {
+				e.stopPropagation();
+				const tagId = button.dataset.tagId;
+				const currentTags = getCurrentFilterTags();
+				const newIncluded = currentTags.included.filter(id => id !== tagId);
+				const newExcluded = currentTags.excluded.filter(id => id !== tagId);
+				if (newIncluded.length > 0 || newExcluded.length > 0) {
+					const filterObj = {
+						included: newIncluded,
+						excluded: newExcluded
+					};
+					sessionStorage.setItem('galleryTagFilter', JSON.stringify(filterObj));
+				} else {
+					sessionStorage.removeItem('galleryTagFilter');
+				}
+				
+				window.dispatchEvent(new CustomEvent('galleryTagFilterChanged'));
+			});
+		});
 
     const swiper = state.getSwiper();
     if (swiper) {
