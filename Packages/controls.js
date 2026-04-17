@@ -112,15 +112,28 @@ function updateControlVisibility(isVisible = true) {
 
 function isCurrentSlideGallery() {
     const swiper = state.getSwiper();
-    if (swiper && swiper.slides) {
-        const activeSlide = swiper.slides[swiper.activeIndex];
-        if (activeSlide) {
-            const zoomContainer = activeSlide.querySelector('.swiper-zoom-container');
-            if (zoomContainer && zoomContainer.dataset.type === 'gallery') {
-                return true;
-            }
+    if (!swiper) return false;
+    
+    // Get the current image data for the active slide
+    const currentIndex = swiper.activeIndex;
+    const currentImages = window.currentImages || [];
+    
+    if (currentIndex < currentImages.length) {
+        const currentImage = currentImages[currentIndex];
+        // Check if this is a gallery based on the image data
+        if (currentImage) {
+            // Gallery images typically have a url property and image_count
+            return !!(currentImage.url && currentImage.image_count !== undefined);
         }
     }
+    
+    // Fallback to DOM inspection
+    const activeSlide = swiper.slides[swiper.activeIndex];
+    if (activeSlide) {
+        const zoomContainer = activeSlide.querySelector('.swiper-zoom-container');
+        return zoomContainer && zoomContainer.dataset.type === 'gallery';
+    }
+    
     return false;
 }
 

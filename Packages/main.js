@@ -5,7 +5,6 @@ import './styles.css';
 // Initialize app once DOM is ready
 function initApp() {
     initialize();
-    initPlugin(); // Start the observer
 }
 
 if (document.readyState === 'loading') {
