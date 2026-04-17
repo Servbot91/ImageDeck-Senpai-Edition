@@ -71,10 +71,18 @@ function populateGalleryMetadataModal(metadata) {
     const body = document.querySelector('.image-deck-metadata-body');
     if (!body) return;
 
+    // Construct proper Stash URL - handle case where metadata.url might be "null" string
+    let viewUrl = '/galleries'; // fallback
+    if (metadata.id) {
+        viewUrl = `/galleries/${metadata.id}`;
+    } else if (metadata.url && metadata.url !== "null" && metadata.url !== "undefined") {
+        viewUrl = metadata.url;
+    }
+
     body.innerHTML = `
         <div class="metadata-section metadata-file-info">
             <div class="metadata-filename" title="${metadata.title || 'Untitled'}">${metadata.title || 'Untitled'}</div>
-            <a href="${metadata.url}" target="_blank" class="metadata-link" title="Open gallery page in new tab">
+            <a href="${viewUrl}" target="_blank" class="metadata-link" title="Open gallery page in new tab">
                 View in Stash →
             </a>
         </div>
