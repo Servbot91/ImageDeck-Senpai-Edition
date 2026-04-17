@@ -467,22 +467,25 @@ export async function fetchGalleriesByTags(tagIds, page = 1, perPage = 50) {
 }
 
 
-export async function applyGalleryTagFilter(includedTags, excludedTags) {
+export async function applyGalleryTagFilter(includedTags, excludedTags, includedPerformers = [], excludedPerformers = []) {
     const filterObj = {
-        included: includedTags,
-        excluded: excludedTags
+        includedTags: includedTags,
+        excludedTags: excludedTags,
+        includedPerformers: includedPerformers,
+        excludedPerformers: excludedPerformers
     };
     sessionStorage.setItem('galleryTagFilter', JSON.stringify(filterObj));
     
     window.dispatchEvent(new CustomEvent('galleryTagFilterChanged', { 
-        detail: { includedTags, excludedTags } 
+        detail: { includedTags, excludedTags, includedPerformers, excludedPerformers } 
     }));
 }
+
 
 export function clearGalleryTagFilter() {
     sessionStorage.removeItem('galleryTagFilter');
     window.dispatchEvent(new CustomEvent('galleryTagFilterChanged', { 
-        detail: { includedTags: [], excludedTags: [] } 
+        detail: { includedTags: [], excludedTags: [], includedPerformers: [], excludedPerformers: [] } 
     }));
 }
 

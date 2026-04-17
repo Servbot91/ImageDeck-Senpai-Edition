@@ -89,25 +89,52 @@ export function detectContext() {
 			if (tagFilter) {
 				try {
 					const filterObj = JSON.parse(tagFilter);
-					if ((filterObj.included && filterObj.included.length > 0) || 
-						(filterObj.excluded && filterObj.excluded.length > 0)) {
+					
+					// Handle tag filters
+					if ((filterObj.includedTags && filterObj.includedTags.length > 0) || 
+						(filterObj.excludedTags && filterObj.excludedTags.length > 0)) {
 						if (!filters) {
 							filters = {};
 						}
-						if (filterObj.included.length > 0) {
+						if (filterObj.includedTags && filterObj.includedTags.length > 0) {
 							filters.tags = {
-								value: filterObj.included,
+								value: filterObj.includedTags,
 								modifier: "INCLUDES"
 							};
 						}
-						if (filterObj.excluded.length > 0) {
+						if (filterObj.excludedTags && filterObj.excludedTags.length > 0) {
 							if (filters.tags) {
-								filters.tags.excluded = filterObj.excluded;
+								filters.tags.excluded = filterObj.excludedTags;
 							} else {
 								filters.tags = {
 									value: [],
 									modifier: "INCLUDES",
-									excluded: filterObj.excluded
+									excluded: filterObj.excludedTags
+								};
+							}
+						}
+					}
+					
+					// Handle performer filters
+					if ((filterObj.includedPerformers && filterObj.includedPerformers.length > 0) || 
+						(filterObj.excludedPerformers && filterObj.excludedPerformers.length > 0)) {
+						if (!filters) {
+							filters = {};
+						}
+						if (filterObj.includedPerformers && filterObj.includedPerformers.length > 0) {
+							filters.performers = {
+								value: filterObj.includedPerformers,
+								modifier: "INCLUDES"
+							};
+						}
+						if (filterObj.excludedPerformers && filterObj.excludedPerformers.length > 0) {
+							if (filters.performers) {
+								filters.performers.excluded = filterObj.excludedPerformers;
+							} else {
+								filters.performers = {
+									value: [],
+									modifier: "INCLUDES",
+									excluded: filterObj.excludedPerformers
 								};
 							}
 						}

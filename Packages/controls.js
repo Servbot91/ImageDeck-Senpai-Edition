@@ -1,4 +1,4 @@
-import { searchTags, applyGalleryTagFilter, clearGalleryTagFilter } from './graphql.js';
+import { searchTags, searchPerformers, applyGalleryTagFilter, clearGalleryTagFilter } from './graphql.js';
 import { openMetadataModal, closeMetadataModal } from './metadata.js';
 import { isMobile } from './utils.js';
 import { state } from './state.js';
@@ -219,6 +219,16 @@ function showGalleryTagFilter() {
                     <input type="text" class="excluded-tag-search" placeholder="Search tags..." style="width: 100%; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; color: white; padding: 12px; font-size: 14px; margin-bottom: 10px;">
                     <div class="excluded-tag-list" style="max-height: 150px; overflow-y: auto; background: rgba(255,255,255,0.05); border-radius: 8px; padding: 5px; margin-bottom: 15px;"></div>
                 </div>
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; color: rgba(255,255,255,0.7); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; font-weight: 600;">Included Performers</label>
+                    <input type="text" class="included-performer-search" placeholder="Search performers..." style="width: 100%; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; color: white; padding: 12px; font-size: 14px; margin-bottom: 10px;">
+                    <div class="included-performer-list" style="max-height: 150px; overflow-y: auto; background: rgba(255,255,255,0.05); border-radius: 8px; padding: 5px; margin-bottom: 15px;"></div>
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; color: rgba(255,255,255,0.7); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; font-weight: 600;">Excluded Performers</label>
+                    <input type="text" class="excluded-performer-search" placeholder="Search performers..." style="width: 100%; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; color: white; padding: 12px; font-size: 14px; margin-bottom: 10px;">
+                    <div class="excluded-performer-list" style="max-height: 150px; overflow-y: auto; background: rgba(255,255,255,0.05); border-radius: 8px; padding: 5px; margin-bottom: 15px;"></div>
+                </div>
             </div>
             <div style="padding: 0 20px 20px 20px;">
                 <div style="display: flex; gap: 12px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1);">
@@ -252,10 +262,18 @@ function showGalleryTagFilter() {
 	
     const includedSearchInput = modal.querySelector('.included-tag-search');
     const excludedSearchInput = modal.querySelector('.excluded-tag-search');
+    const includedPerformerSearchInput = modal.querySelector('.included-performer-search');
+    const excludedPerformerSearchInput = modal.querySelector('.excluded-performer-search');
     const includedTagList = modal.querySelector('.included-tag-list');
     const excludedTagList = modal.querySelector('.excluded-tag-list');
+    const includedPerformerList = modal.querySelector('.included-performer-list');
+    const excludedPerformerList = modal.querySelector('.excluded-performer-list');
+    
     let includedTags = [];
     let excludedTags = [];
+    let includedPerformers = [];
+    let excludedPerformers = [];
+
     function setupTagSearch(inputElement, tagListContainer, selectedTags, type) {
         let searchTimeout;
         
@@ -278,18 +296,48 @@ function showGalleryTagFilter() {
         });
     }
 
+    function setupPerformerSearch(inputElement, performerListContainer, selectedPerformers, type) {
+        let searchTimeout;
+        
+        inputElement.addEventListener('input', async (e) => {
+            clearTimeout(searchTimeout);
+            const query = e.target.value.trim();
+            if (query.length >= 1) {
+                searchTimeout = setTimeout(async () => {
+                    try {
+                        const performers = await searchPerformers(query);
+                        renderPerformerList(performers, performerListContainer, selectedPerformers, type);
+                    } catch (error) {
+                        console.error('Error searching performers:', error);
+                        performerListContainer.innerHTML = '<div style="color: #ff6b6b; padding: 8px;">Error loading performers</div>';
+                    }
+                }, 300); 
+            } else {
+                performerListContainer.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type to search performers</div>';
+            }
+        });
+    }
+
     const currentFilter = sessionStorage.getItem('galleryTagFilter');
     if (currentFilter) {
         try {
             const filterObj = JSON.parse(currentFilter);
-            includedTags = filterObj.included || [];
-            excludedTags = filterObj.excluded || [];
+            includedTags = filterObj.includedTags || [];
+            excludedTags = filterObj.excludedTags || [];
+            includedPerformers = filterObj.includedPerformers || [];
+            excludedPerformers = filterObj.excludedPerformers || [];
             setTimeout(() => {
                 if (includedSearchInput.value.trim().length >= 1) {
                     includedSearchInput.dispatchEvent(new Event('input'));
                 }
                 if (excludedSearchInput.value.trim().length >= 1) {
                     excludedSearchInput.dispatchEvent(new Event('input'));
+                }
+                if (includedPerformerSearchInput.value.trim().length >= 1) {
+                    includedPerformerSearchInput.dispatchEvent(new Event('input'));
+                }
+                if (excludedPerformerSearchInput.value.trim().length >= 1) {
+                    excludedPerformerSearchInput.dispatchEvent(new Event('input'));
                 }
             }, 100);
         } catch (e) {
@@ -299,39 +347,102 @@ function showGalleryTagFilter() {
     
     setupTagSearch(includedSearchInput, includedTagList, includedTags, 'included');
     setupTagSearch(excludedSearchInput, excludedTagList, excludedTags, 'excluded');    
+    setupPerformerSearch(includedPerformerSearchInput, includedPerformerList, includedPerformers, 'included');
+    setupPerformerSearch(excludedPerformerSearchInput, excludedPerformerList, excludedPerformers, 'excluded');
     
     if (includedSearchInput.value.trim().length >= 1) {
         includedSearchInput.dispatchEvent(new Event('input'));
     } else {
-        includedTagList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type to search tags</div>';
+        includedTagList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
     }
     
     if (excludedSearchInput.value.trim().length >= 1) {
         excludedSearchInput.dispatchEvent(new Event('input'));
     } else {
-        excludedTagList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type to search tags</div>';
+        excludedTagList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
+    }
+    
+    if (includedPerformerSearchInput.value.trim().length >= 1) {
+        includedPerformerSearchInput.dispatchEvent(new Event('input'));
+    } else {
+        includedPerformerList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
+    }
+    
+    if (excludedPerformerSearchInput.value.trim().length >= 1) {
+        excludedPerformerSearchInput.dispatchEvent(new Event('input'));
+    } else {
+        excludedPerformerList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
     }
     
     const applyBtn = modal.querySelector('.apply-tag-filter');
     applyBtn.addEventListener('click', () => {
-        if (includedTags.length > 0 || excludedTags.length > 0) {
-            applyGalleryTagFilter(includedTags, excludedTags);
+        if (includedTags.length > 0 || excludedTags.length > 0 || includedPerformers.length > 0 || excludedPerformers.length > 0) {
+            applyGalleryTagFilter(includedTags, excludedTags, includedPerformers, excludedPerformers);
         } else {
             clearGalleryTagFilter();
         }
         modal.remove();
     });
+    
     const clearBtn = modal.querySelector('.clear-tag-filter');
     clearBtn.addEventListener('click', () => {
         includedTags = [];
         excludedTags = [];
+        includedPerformers = [];
+        excludedPerformers = [];
         includedSearchInput.value = '';
         excludedSearchInput.value = '';
+        includedPerformerSearchInput.value = '';
+        excludedPerformerSearchInput.value = '';
         includedTagList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
         excludedTagList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
+        includedPerformerList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
+        excludedPerformerList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
         clearGalleryTagFilter();
     });
 }
+
+function renderPerformerList(performers, container, selectedPerformers, type) {
+    if (!performers || performers.length === 0) {
+        container.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">No performers found</div>';
+        return;
+    }
+    
+    container.innerHTML = performers.map(performer => `  
+        <div class="performer-item" style="padding: 8px; cursor: pointer; display: flex; align-items: center; border-radius: 4px; margin-bottom: 2px; ${selectedPerformers.includes(performer.id) ? 'background: #444;' : 'background: #333;'}">
+            <input type="checkbox" id="performer-${type}-${performer.id}" ${selectedPerformers.includes(performer.id) ? 'checked' : ''} style="margin-right: 8px; cursor: pointer;">
+            <label for="performer-${type}-${performer.id}" style="cursor: pointer; flex-grow: 1;">${performer.name}</label>
+        </div>
+    `).join('');
+    
+    container.querySelectorAll('.performer-item').forEach((item, index) => {
+        const checkbox = item.querySelector('input[type="checkbox"]');
+        const performerId = performers[index].id;
+        item.addEventListener('click', (e) => {
+            if (e.target !== checkbox) {
+                checkbox.checked = !checkbox.checked;
+                updateSelectedPerformers(selectedPerformers, performerId, checkbox.checked);
+            }
+        });
+        checkbox.addEventListener('change', (e) => {
+            updateSelectedPerformers(selectedPerformers, performerId, e.target.checked);
+        });
+    });
+}
+
+function updateSelectedPerformers(selectedPerformers, performerId, isSelected) {
+    if (isSelected) {
+        if (!selectedPerformers.includes(performerId)) {
+            selectedPerformers.push(performerId);
+        }
+    } else {
+        const idx = selectedPerformers.indexOf(performerId);
+        if (idx > -1) {
+            selectedPerformers.splice(idx, 1);
+        }
+    }
+}
+
 
 function renderTagList(tags, container, selectedTags, type) {
     if (!tags || tags.length === 0) {
@@ -393,14 +504,21 @@ function getCurrentFilterTags() {
     const tagFilter = sessionStorage.getItem('galleryTagFilter');
     if (tagFilter) {
         try {
-            return JSON.parse(tagFilter);
+            const filterObj = JSON.parse(tagFilter);
+            return {
+                includedTags: filterObj.includedTags || [],
+                excludedTags: filterObj.excludedTags || [],
+                includedPerformers: filterObj.includedPerformers || [],
+                excludedPerformers: filterObj.excludedPerformers || []
+            };
         } catch (e) {
             console.error('Error parsing tag filter:', e);
-            return [];
+            return { includedTags: [], excludedTags: [], includedPerformers: [], excludedPerformers: [] };
         }
     }
-    return [];
+    return { includedTags: [], excludedTags: [], includedPerformers: [], excludedPerformers: [] };
 }
+
 
 export function setupEventHandlers(container, callbacks = {}) {
     const { closeDeck, startAutoPlay, stopAutoPlay, loadNextChunk } = callbacks;
@@ -497,34 +615,43 @@ export function setupEventHandlers(container, callbacks = {}) {
         });
     }); 
 
-		const removeTagButtons = container.querySelectorAll('.remove-filter-tag');
-		removeTagButtons.forEach(button => {
-			eventManager.add(button, 'click', async (e) => {
-				e.stopPropagation();
-				const tagId = button.dataset.tagId;
-				const currentTags = getCurrentFilterTags();
-				const newIncluded = currentTags.included.filter(id => id !== tagId);
-				const newExcluded = currentTags.excluded.filter(id => id !== tagId);
-				if (newIncluded.length > 0 || newExcluded.length > 0) {
-					const filterObj = {
-						included: newIncluded,
-						excluded: newExcluded
-					};
-					sessionStorage.setItem('galleryTagFilter', JSON.stringify(filterObj));
-				} else {
-					sessionStorage.removeItem('galleryTagFilter');
-				}
-				
-				window.dispatchEvent(new CustomEvent('galleryTagFilterChanged'));
-			});
-		});
+    // Fix the remove tag buttons event listeners
+    const removeTagButtons = container.querySelectorAll('.remove-filter-tag');
+    removeTagButtons.forEach(button => {
+        eventManager.add(button, 'click', async (e) => {
+            e.stopPropagation();
+            const tagId = button.dataset.tagId;
+            const performerId = button.dataset.performerId; // Add this
+            const currentTags = getCurrentFilterTags();
+            
+            let newIncludedTags = currentTags.includedTags.filter(id => id !== tagId);
+            let newExcludedTags = currentTags.excludedTags.filter(id => id !== tagId);
+            let newIncludedPerformers = currentTags.includedPerformers.filter(id => id !== performerId);
+            let newExcludedPerformers = currentTags.excludedPerformers.filter(id => id !== performerId);
+            
+            if (newIncludedTags.length > 0 || newExcludedTags.length > 0 || 
+                newIncludedPerformers.length > 0 || newExcludedPerformers.length > 0) {
+                const filterObj = {
+                    includedTags: newIncludedTags,
+                    excludedTags: newExcludedTags,
+                    includedPerformers: newIncludedPerformers,
+                    excludedPerformers: newExcludedPerformers
+                };
+                sessionStorage.setItem('galleryTagFilter', JSON.stringify(filterObj));
+            } else {
+                sessionStorage.removeItem('galleryTagFilter');
+            }
+            
+            window.dispatchEvent(new CustomEvent('galleryTagFilterChanged'));
+        });
+    });
 
     const swiper = state.getSwiper();
     if (swiper) {
-		const slideChangeListener = function() {
-			updateGalleryStateClass();
-			updateControlVisibility(true);
-		};
+        const slideChangeListener = function() {
+            updateGalleryStateClass();
+            updateControlVisibility(true);
+        };
         swiper.on('slideChangeTransitionEnd', slideChangeListener);
         storeElementData(container, { slideChangeListener });
         
@@ -533,8 +660,8 @@ export function setupEventHandlers(container, callbacks = {}) {
         }, 0);
     }
 
-	const keyboardHandlerWithActions = (e) => handleKeyboard(e, callbacks);
-	eventManager.add(document, 'keydown', keyboardHandlerWithActions, true);
+    const keyboardHandlerWithActions = (e) => handleKeyboard(e, callbacks);
+    eventManager.add(document, 'keydown', keyboardHandlerWithActions, true);
     
     setupSwipeGestures(container, eventManager);
     setupMouseWheel(container, eventManager);

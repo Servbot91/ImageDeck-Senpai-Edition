@@ -75,16 +75,19 @@ function getCurrentFilterTags() {
         try {
             const filterObj = JSON.parse(tagFilter);
             return {
-                included: filterObj.included || [],
-                excluded: filterObj.excluded || []
+                includedTags: filterObj.includedTags || [],
+                excludedTags: filterObj.excludedTags || [],
+                includedPerformers: filterObj.includedPerformers || [],
+                excludedPerformers: filterObj.excludedPerformers || []
             };
         } catch (e) {
             console.error('Error parsing tag filter:', e);
-            return { included: [], excluded: [] };
+            return { includedTags: [], excludedTags: [], includedPerformers: [], excludedPerformers: [] };
         }
     }
-    return { included: [], excluded: [] };
+    return { includedTags: [], excludedTags: [], includedPerformers: [], excludedPerformers: [] };
 }
+
 
 async function updateDeckContentWithFilter() {
     console.log('[Image Deck] Updating content with filter');
@@ -142,9 +145,12 @@ async function updateDeckContentWithFilter() {
 async function restoreFilterDisplayOnOpen(container) {
     const currentTags = getCurrentFilterTags();
     
-    if (currentTags.included.length > 0 || currentTags.excluded.length > 0) {
-        const allTagIds = [...currentTags.included, ...currentTags.excluded];
+    if (currentTags.includedTags.length > 0 || currentTags.excludedTags.length > 0 || 
+        currentTags.includedPerformers.length > 0 || currentTags.excludedPerformers.length > 0) {
+        const allTagIds = [...currentTags.includedTags, ...currentTags.excludedTags];
+        const allPerformerIds = [...currentTags.includedPerformers, ...currentTags.excludedPerformers];
         const tagNames = await getTagNames(allTagIds);
+        const performerNames = await getPerformerNames(allPerformerIds);
         
         const filterDisplay = document.createElement('div');
         filterDisplay.className = 'image-deck-current-filters';
@@ -152,7 +158,8 @@ async function restoreFilterDisplayOnOpen(container) {
         
         let filterHtml = '<span style="color: #ccc; font-size: 12px; background: rgba(0,0,0,0.5); padding: 2px 8px; border-radius: 10px;">FILTERED BY:</span>';
         
-        filterHtml += currentTags.included.map(tagId => {
+        // Tags
+        filterHtml += currentTags.includedTags.map(tagId => {
             const tagName = tagNames[tagId] || `Tag:${tagId}`;
             return `
                 <span class="filter-tag-display" data-tag-id="${tagId}" style="color: white; font-size: 12px; background: rgba(46, 204, 113, 0.7); padding: 2px 8px; border-radius: 10px; display: flex; align-items: center;">
@@ -161,12 +168,31 @@ async function restoreFilterDisplayOnOpen(container) {
                 </span>`;
         }).join('');
         
-        filterHtml += currentTags.excluded.map(tagId => {
+        filterHtml += currentTags.excludedTags.map(tagId => {
             const tagName = tagNames[tagId] || `Tag:${tagId}`;
             return `
                 <span class="filter-tag-display" data-tag-id="${tagId}" style="color: white; font-size: 12px; background: rgba(231, 76, 60, 0.7); padding: 2px 8px; border-radius: 10px; display: flex; align-items: center;">
                     ❌ ${tagName}
                     <button class="remove-filter-tag" data-tag-id="${tagId}" style="background: none; border: none; color: white; margin-left: 5px; cursor: pointer; font-size: 14px;">×</button>
+                </span>`;
+        }).join('');
+        
+        // Performers (pink)
+        filterHtml += currentTags.includedPerformers.map(performerId => {
+            const performerName = performerNames[performerId] || `Performer:${performerId}`;
+            return `
+                <span class="filter-tag-display" data-performer-id="${performerId}" style="color: white; font-size: 12px; background: rgba(233, 30, 99, 0.7); padding: 2px 8px; border-radius: 10px; display: flex; align-items: center;">
+                    ✅ ${performerName}
+                    <button class="remove-filter-tag" data-performer-id="${performerId}" style="background: none; border: none; color: white; margin-left: 5px; cursor: pointer; font-size: 14px;">×</button>
+                </span>`;
+        }).join('');
+        
+        filterHtml += currentTags.excludedPerformers.map(performerId => {
+            const performerName = performerNames[performerId] || `Performer:${performerId}`;
+            return `
+                <span class="filter-tag-display" data-performer-id="${performerId}" style="color: white; font-size: 12px; background: rgba(233, 30, 99, 0.7); padding: 2px 8px; border-radius: 10px; display: flex; align-items: center;">
+                    ❌ ${performerName}
+                    <button class="remove-filter-tag" data-performer-id="${performerId}" style="background: none; border: none; color: white; margin-left: 5px; cursor: pointer; font-size: 14px;">×</button>
                 </span>`;
         }).join('');
         
@@ -178,15 +204,21 @@ async function restoreFilterDisplayOnOpen(container) {
                 button.addEventListener('click', async (e) => {
                     e.stopPropagation();
                     const tagId = button.dataset.tagId;
+                    const performerId = button.dataset.performerId;
                     const currentTags = getCurrentFilterTags();
                     
-                    let newIncluded = currentTags.included.filter(id => id !== tagId);
-                    let newExcluded = currentTags.excluded.filter(id => id !== tagId);
+                    let newIncludedTags = currentTags.includedTags.filter(id => id !== tagId);
+                    let newExcludedTags = currentTags.excludedTags.filter(id => id !== tagId);
+                    let newIncludedPerformers = currentTags.includedPerformers.filter(id => id !== performerId);
+                    let newExcludedPerformers = currentTags.excludedPerformers.filter(id => id !== performerId);
                     
-                    if (newIncluded.length > 0 || newExcluded.length > 0) {
+                    if (newIncludedTags.length > 0 || newExcludedTags.length > 0 || 
+                        newIncludedPerformers.length > 0 || newExcludedPerformers.length > 0) {
                         const filterObj = {
-                            included: newIncluded,
-                            excluded: newExcluded
+                            includedTags: newIncludedTags,
+                            excludedTags: newExcludedTags,
+                            includedPerformers: newIncludedPerformers,
+                            excludedPerformers: newExcludedPerformers
                         };
                         sessionStorage.setItem('galleryTagFilter', JSON.stringify(filterObj));
                     } else {
@@ -199,6 +231,48 @@ async function restoreFilterDisplayOnOpen(container) {
         }, 0);
     }
 }
+
+async function getPerformerNames(performerIds) {
+    if (!performerIds || performerIds.length === 0) return {};
+    
+    try {
+        const performerPromises = performerIds.map(async (performerId) => {
+            const query = `query FindPerformer($id: ID!) {
+                findPerformer(id: $id) {
+                    id
+                    name
+                }
+            }`;
+            
+            const response = await fetch('/graphql', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    query, 
+                    variables: { id: performerId } 
+                })
+            });
+            
+            const data = await response.json();
+            return data?.data?.findPerformer;
+        });
+        
+        const performerResults = await Promise.all(performerPromises);
+        const performerMap = {};
+        
+        performerResults.forEach(performer => {
+            if (performer) {
+                performerMap[performer.id] = performer.name;
+            }
+        });
+        
+        return performerMap;
+    } catch (error) {
+        console.error('[Image Deck] Error fetching performer names:', error);
+        return {};
+    }
+}
+
 
 async function forceRefreshGalleryCovers() {
     console.log('[Image Deck] Force refreshing gallery covers');
@@ -687,10 +761,12 @@ async function createDeckUI() {
         container.classList.add('mobile-performance-mode');
     }
     
-    const currentTags = getCurrentFilterTags();
+    const currentTags = getCurrentFilterTags(); // This returns the correct structure now
     let filterDisplay = '';
     
-    if (currentTags.included.length > 0 || currentTags.excluded.length > 0) {
+    // Fix the condition check here
+    if (currentTags.includedTags && (currentTags.includedTags.length > 0 || currentTags.excludedTags.length > 0 || 
+        currentTags.includedPerformers.length > 0 || currentTags.excludedPerformers.length > 0)) {
     }
 
     container.innerHTML = `
@@ -735,21 +811,30 @@ async function createDeckUI() {
         </div>
     `;
 
-    if (currentTags.included.length > 0 || currentTags.excluded.length > 0) {
+    // Fix the event listener setup
+    if (currentTags.includedTags && (currentTags.includedTags.length > 0 || currentTags.excludedTags.length > 0 || 
+        currentTags.includedPerformers.length > 0 || currentTags.excludedPerformers.length > 0)) {
         setTimeout(() => {
             const removeButtons = container.querySelectorAll('.remove-filter-tag');
             removeButtons.forEach(button => {
                 button.addEventListener('click', async (e) => {
                     e.stopPropagation();
                     const tagId = button.dataset.tagId;
+                    const performerId = button.dataset.performerId;
                     const currentTags = getCurrentFilterTags();
-                    let newIncluded = currentTags.included.filter(id => id !== tagId);
-                    let newExcluded = currentTags.excluded.filter(id => id !== tagId);
                     
-                    if (newIncluded.length > 0 || newExcluded.length > 0) {
+                    let newIncludedTags = currentTags.includedTags.filter(id => id !== tagId);
+                    let newExcludedTags = currentTags.excludedTags.filter(id => id !== tagId);
+                    let newIncludedPerformers = currentTags.includedPerformers.filter(id => id !== performerId);
+                    let newExcludedPerformers = currentTags.excludedPerformers.filter(id => id !== performerId);
+                    
+                    if (newIncludedTags.length > 0 || newExcludedTags.length > 0 || 
+                        newIncludedPerformers.length > 0 || newExcludedPerformers.length > 0) {
                         const filterObj = {
-                            included: newIncluded,
-                            excluded: newExcluded
+                            includedTags: newIncludedTags,
+                            excludedTags: newExcludedTags,
+                            includedPerformers: newIncludedPerformers,
+                            excludedPerformers: newExcludedPerformers
                         };
                         sessionStorage.setItem('galleryTagFilter', JSON.stringify(filterObj));
                     } else {
@@ -773,15 +858,20 @@ async function updateFilterDisplayInUI() {
         existingFilterDisplay.remove();
     }
     const currentTags = getCurrentFilterTags();
-    if (currentTags.included.length > 0 || currentTags.excluded.length > 0) {
-        const allTagIds = [...currentTags.included, ...currentTags.excluded];
+    if (currentTags.includedTags.length > 0 || currentTags.excludedTags.length > 0 || 
+        currentTags.includedPerformers.length > 0 || currentTags.excludedPerformers.length > 0) {
+        const allTagIds = [...currentTags.includedTags, ...currentTags.excludedTags];
+        const allPerformerIds = [...currentTags.includedPerformers, ...currentTags.excludedPerformers];
         const tagNames = await getTagNames(allTagIds);
+        const performerNames = await getPerformerNames(allPerformerIds);
         const filterDisplay = document.createElement('div');
         filterDisplay.className = 'image-deck-current-filters';
         filterDisplay.style.cssText = 'position: absolute; top: 60px; left: 20px; right: 20px; z-index: 10; display: flex; flex-wrap: wrap; gap: 5px;';
         
         let filterHtml = '<span style="color: #ccc; font-size: 12px; background: rgba(0,0,0,0.5); padding: 2px 8px; border-radius: 10px;">FILTERED BY:</span>';
-        filterHtml += currentTags.included.map(tagId => {
+        
+        // Tags
+        filterHtml += currentTags.includedTags.map(tagId => {
             const tagName = tagNames[tagId] || `Tag:${tagId}`;
             return `
                 <span class="filter-tag-display" data-tag-id="${tagId}" style="color: white; font-size: 12px; background: rgba(46, 204, 113, 0.7); padding: 2px 8px; border-radius: 10px; display: flex; align-items: center;">
@@ -789,12 +879,32 @@ async function updateFilterDisplayInUI() {
                     <button class="remove-filter-tag" data-tag-id="${tagId}" style="background: none; border: none; color: white; margin-left: 5px; cursor: pointer; font-size: 14px;">×</button>
                 </span>`;
         }).join('');
-        filterHtml += currentTags.excluded.map(tagId => {
+        
+        filterHtml += currentTags.excludedTags.map(tagId => {
             const tagName = tagNames[tagId] || `Tag:${tagId}`;
             return `
                 <span class="filter-tag-display" data-tag-id="${tagId}" style="color: white; font-size: 12px; background: rgba(231, 76, 60, 0.7); padding: 2px 8px; border-radius: 10px; display: flex; align-items: center;">
                     ❌ ${tagName}
                     <button class="remove-filter-tag" data-tag-id="${tagId}" style="background: none; border: none; color: white; margin-left: 5px; cursor: pointer; font-size: 14px;">×</button>
+                </span>`;
+        }).join('');
+        
+        // Performers (pink)
+        filterHtml += currentTags.includedPerformers.map(performerId => {
+            const performerName = performerNames[performerId] || `Performer:${performerId}`;
+            return `
+                <span class="filter-tag-display" data-performer-id="${performerId}" style="color: white; font-size: 12px; background: rgba(233, 30, 99, 0.7); padding: 2px 8px; border-radius: 10px; display: flex; align-items: center;">
+                    ✅ ${performerName}
+                    <button class="remove-filter-tag" data-performer-id="${performerId}" style="background: none; border: none; color: white; margin-left: 5px; cursor: pointer; font-size: 14px;">×</button>
+                </span>`;
+        }).join('');
+        
+        filterHtml += currentTags.excludedPerformers.map(performerId => {
+            const performerName = performerNames[performerId] || `Performer:${performerId}`;
+            return `
+                <span class="filter-tag-display" data-performer-id="${performerId}" style="color: white; font-size: 12px; background: rgba(233, 30, 99, 0.7); padding: 2px 8px; border-radius: 10px; display: flex; align-items: center;">
+                    ❌ ${performerName}
+                    <button class="remove-filter-tag" data-performer-id="${performerId}" style="background: none; border: none; color: white; margin-left: 5px; cursor: pointer; font-size: 14px;">×</button>
                 </span>`;
         }).join('');
         
@@ -805,14 +915,21 @@ async function updateFilterDisplayInUI() {
                 button.addEventListener('click', async (e) => {
                     e.stopPropagation();
                     const tagId = button.dataset.tagId;
+                    const performerId = button.dataset.performerId;
                     const currentTags = getCurrentFilterTags();
-                    let newIncluded = currentTags.included.filter(id => id !== tagId);
-                    let newExcluded = currentTags.excluded.filter(id => id !== tagId);
                     
-                    if (newIncluded.length > 0 || newExcluded.length > 0) {
+                    let newIncludedTags = currentTags.includedTags.filter(id => id !== tagId);
+                    let newExcludedTags = currentTags.excludedTags.filter(id => id !== tagId);
+                    let newIncludedPerformers = currentTags.includedPerformers.filter(id => id !== performerId);
+                    let newExcludedPerformers = currentTags.excludedPerformers.filter(id => id !== performerId);
+                    
+                    if (newIncludedTags.length > 0 || newExcludedTags.length > 0 || 
+                        newIncludedPerformers.length > 0 || newExcludedPerformers.length > 0) {
                         const filterObj = {
-                            included: newIncluded,
-                            excluded: newExcluded
+                            includedTags: newIncludedTags,
+                            excludedTags: newExcludedTags,
+                            includedPerformers: newIncludedPerformers,
+                            excludedPerformers: newExcludedPerformers
                         };
                         sessionStorage.setItem('galleryTagFilter', JSON.stringify(filterObj));
                     } else {
@@ -825,6 +942,7 @@ async function updateFilterDisplayInUI() {
         }, 0);
     }
 }
+
 
 
 let uiUpdatePending = false;
