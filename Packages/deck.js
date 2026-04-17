@@ -116,6 +116,7 @@ async function updateDeckContentWithFilter() {
             currentImages = result.images;
             totalImageCount = result.totalCount || 0;
             totalPages = result.totalPages || 1;
+			window.currentImages = currentImages;
             
             // Update Swiper with new content
             if (currentSwiper && currentSwiper.virtual) {
@@ -316,6 +317,7 @@ async function forceRefreshGalleryCovers() {
         if (result && result.images) {
             // Update the global state
             currentImages = result.images;
+			window.currentImages = currentImages;
             totalImageCount = result.totalCount || 0;
             totalPages = result.totalPages || 1;
             

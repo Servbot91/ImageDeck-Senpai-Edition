@@ -38,7 +38,7 @@ export async function openMetadataModal() {
         // Update header for gallery
         header.textContent = 'Gallery Details';
         
-        // Extract gallery ID from URL or use currentImage.id
+        // Extract gallery ID from URL - this is the key fix
         let galleryId = currentImage.id;
         if (currentImage.url) {
             const urlMatch = currentImage.url.match(/\/galleries\/(\d+)/);
@@ -46,10 +46,13 @@ export async function openMetadataModal() {
                 galleryId = urlMatch[1];
             }
         }
+        
+        // Always fetch fresh metadata instead of using cached data
         currentMetadata = await fetchGalleryMetadata(galleryId);
     } else {
         // Update header for image
         header.textContent = 'Image Details';
+        // Always fetch fresh metadata for images too
         currentMetadata = await fetchImageMetadata(currentImage.id);
     }
 
