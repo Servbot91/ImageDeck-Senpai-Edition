@@ -199,5 +199,62 @@ function processPreviewButton(previewContainer) {
     }
 }
 
+function createModeToggleButton(container) {
+    const topBar = container.querySelector('.image-deck-topbar');
+    if (!topBar) return;
+
+    // Create the mode indicator element
+    const modeIndicator = document.createElement('div');
+    modeIndicator.className = 'mode-indicator';
+    modeIndicator.style.cssText = `
+        position: absolute;
+        left: 20px;
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: 14px;
+        font-weight: bold;
+        z-index: 11;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    `;
+
+    // Set initial mode display
+    const isGalleryMode = window.location.pathname === '/galleries' || 
+                          window.location.pathname.startsWith('/galleries/');
+    updateModeDisplay(modeIndicator, isGalleryMode);
+
+    // Insert before the counter
+    const counter = topBar.querySelector('.image-deck-counter');
+    if (counter && counter.parentNode) {
+        counter.parentNode.insertBefore(modeIndicator, counter);
+    }
+
+    // Add click handler to toggle modes
+    modeIndicator.addEventListener('click', async () => {
+        const currentMode = modeIndicator.textContent.includes('Gallery Mode') ? 'gallery' : 'image';
+        const newMode = currentMode === 'gallery' ? 'image' : 'gallery';
+        
+        // Update display immediately
+        updateModeDisplay(modeIndicator, newMode === 'gallery');
+
+        // Reload deck with new mode
+        import('./deck.js').then(module => {
+            module.closeDeck();
+            // Small delay to ensure cleanup
+            setTimeout(() => {
+                module.openDeck();
+            }, 100);
+        });
+    });
+}
+
+// Helper function to update mode display
+function updateModeDisplay(element, isGalleryMode) {
+    element.innerHTML = isGalleryMode ? 
+        '🖼️ Gallery Mode Enabled🖼️' : 
+        '📷 Image Mode Enabled📷';
+}
+
 export { createLaunchButton, cleanupButton, retryCreateButton } from './button.js';
 export { openDeck, closeDeck, startAutoPlay, stopAutoPlay, loadNextChunk } from './deck.js';

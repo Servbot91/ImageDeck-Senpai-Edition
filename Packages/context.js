@@ -17,7 +17,6 @@ function getCurrentFilterTags() {
     return { included: [], excluded: [] };
 }
 
-// Update detectContext in context.js to handle the new filter structure
 export function detectContext() {
     const path = window.location.pathname;
     const hash = window.location.hash;
@@ -29,7 +28,57 @@ export function detectContext() {
         return { type: 'images', id: imageIdMatch[1], hash, isSingleImage: true };
     }
 
-    // 2. Check for Gallery Contexts
+    // 2. Handle performer pages with explicit gallery/image tabs
+    const performerMatch = path.match(/^\/performers\/(\d+)(?:\/(galleries|images))?/);
+    if (performerMatch) {
+        const [, performerId, tab] = performerMatch;
+        
+        // Determine which tab is active
+        let activeTab = 'images'; // default to images
+        
+        if (tab === 'galleries' || path.includes('/galleries')) {
+            activeTab = 'galleries';
+        } else if (tab === 'images' || path.includes('/images')) {
+            activeTab = 'images';
+        } else {
+            // Check hash or active tab in UI
+            const isGalleriesTab = hash.includes('galleries') ||
+                                  document.querySelector('.nav-tabs .active')?.textContent?.includes('Galleries');
+            const isImagesTab = hash.includes('images') ||
+                               document.querySelector('.nav-tabs .active')?.textContent?.includes('Images');
+            
+            if (isGalleriesTab) {
+                activeTab = 'galleries';
+            } else if (isImagesTab) {
+                activeTab = 'images';
+            }
+        }
+
+        // Create filter for performer
+        const filter = {
+            performers: { value: [performerId], modifier: "INCLUDES" }
+        };
+
+        // Parse sort parameters from URL
+        const params = new URLSearchParams(search);
+        if (params.has('sortby')) {
+            filter.sortBy = params.get('sortby');
+        }
+        if (params.has('sortdir')) {
+            filter.sortDir = params.get('sortdir');
+        }
+
+        return {
+            type: activeTab,
+            id: performerId,
+            filter: filter,
+            isPerformerContext: true,
+            performerId: performerId,
+            hash: hash
+        };
+    }
+
+    // 3. Check for Gallery Contexts (including root galleries)
     if (path.startsWith('/galleries')) {
         const galleryIdMatch = path.match(/^\/galleries\/(\d+)/);
         const params = new URLSearchParams(search);
@@ -80,8 +129,7 @@ export function detectContext() {
         }
     }
 
-
-    // 3. Handle /images page (with OR without search params)
+    // 4. Handle /images page (with OR without search params)
     if (path.startsWith('/images')) {
         const filters = parseUrlFilters(search);
         return {
@@ -89,42 +137,6 @@ export function detectContext() {
             isFilteredView: !!search, // true if there are any search params
             isGeneralListing: !search, // true if it's just the base /images page
             filter: filters,
-            hash: hash
-        };
-    }
-
-    // 4. Handle performer pages with gallery/image tabs
-    const performerMatch = path.match(/^\/performers\/(\d+)(?:\/(galleries|images))?/);
-    if (performerMatch) {
-        const [, performerId, tab] = performerMatch;
-        const isImagesTab = tab === 'images' || hash.includes('images') || 
-                           document.querySelector('.nav-tabs .active')?.textContent?.includes('Images');
-        const isGalleriesTab = tab === 'galleries' || hash.includes('galleries') ||
-                              document.querySelector('.nav-tabs .active')?.textContent?.includes('Galleries');
-
-        // Default to images tab if no specific tab is indicated
-        const activeTab = isGalleriesTab ? 'galleries' : 'images';
-
-        // Create filter for performer
-        const filter = {
-            performers: { value: [performerId], modifier: "INCLUDES" }
-        };
-
-        // Parse sort parameters from URL
-        const params = new URLSearchParams(search);
-        if (params.has('sortby')) {
-            filter.sortBy = params.get('sortby');
-        }
-        if (params.has('sortdir')) {
-            filter.sortDir = params.get('sortdir');
-        }
-
-        return {
-            type: activeTab,
-            id: performerId,
-            filter: filter,
-            isPerformerContext: true,
-            performerId: performerId,
             hash: hash
         };
     }
@@ -159,6 +171,7 @@ export function detectContext() {
 
     return null;
 }
+
 // Get visible images from current page
 export function getVisibleImages() {
     const images = [];
