@@ -97,6 +97,21 @@ function populateGalleryMetadataModal(metadata) {
             <textarea class="metadata-details" placeholder="Enter details...">${metadata.details || ''}</textarea>
         </div>
 
+        <!-- PERFORMERS SECTION -->
+        <div class="metadata-section">
+            <label>Performers</label>
+            <div class="metadata-tags metadata-performers">
+                ${metadata.performers ? metadata.performers.map(performer =>
+                    `<span class="metadata-tag" data-performer-id="${performer.id}">
+                        ${performer.name}
+                        <button class="metadata-tag-remove" data-performer-id="${performer.id}">×</button>
+                    </span>`
+                ).join('') : ''}
+            </div>
+            <input type="text" class="metadata-tag-search metadata-performer-search" placeholder="Search performers...">
+            <div class="metadata-tag-results metadata-performer-results"></div>
+        </div>
+
         <!-- TAGGER SECTION -->
         <div class="metadata-section">
             <label>Tags</label>
@@ -149,18 +164,98 @@ function setupGalleryMetadataHandlers(metadata) {
     const saveBtn = body.querySelector('.metadata-save-btn');
     if (!saveBtn) return;
 
-    // Store original tag IDs for comparison later
+    // Store original tag IDs and performer IDs for comparison later
     const originalTagIds = metadata.tags ? metadata.tags.map(tag => tag.id) : [];
+    const originalPerformerIds = metadata.performers ? metadata.performers.map(performer => performer.id) : [];
     let currentTagIds = [...originalTagIds];
+    let currentPerformerIds = [...originalPerformerIds];
 
-    // Tag search functionality
-    const tagSearch = body.querySelector('.metadata-tag-search');
-    const tagResults = body.querySelector('.metadata-tag-results');
-    let searchTimeout;
+    // Performer search functionality
+    const performerSearch = body.querySelector('.metadata-performer-search');
+    const performerResults = body.querySelector('.metadata-performer-results');
+    let performerSearchTimeout;
+
+    if (performerSearch) {
+        performerSearch.addEventListener('input', (e) => {
+            clearTimeout(performerSearchTimeout);
+            const query = e.target.value.trim();
+
+            if (query.length < 2) {
+                performerResults.innerHTML = '';
+                return;
+            }
+
+            performerSearchTimeout = setTimeout(async () => {
+                // Import searchPerformers function
+                const { searchPerformers } = await import('./graphql.js');
+                const performers = await searchPerformers(query);
+                performerResults.innerHTML = performers.map(performer =>
+                    `<div class="metadata-tag-result" data-performer-id="${performer.id}" data-performer-name="${performer.name}">
+                        ${performer.name}
+                    </div>`
+                ).join('');
+
+                // Add click handlers for results
+                performerResults.querySelectorAll('.metadata-tag-result').forEach(result => {
+                    result.addEventListener('click', (e) => {
+                        const performerId = e.target.dataset.performerId;
+                        const performerName = e.target.dataset.performerName;
+
+                        // Check if performer is already added
+                        if (currentPerformerIds.includes(performerId)) {
+                            return;
+                        }
+
+                        // Add performer to list using the same metadata-tag class
+                        const performersContainer = body.querySelector('.metadata-performers');
+                        const performerHtml = `<span class="metadata-tag" data-performer-id="${performerId}">
+                            ${performerName}
+                            <button class="metadata-tag-remove" data-performer-id="${performerId}">×</button>
+                        </span>`;
+                        performersContainer.insertAdjacentHTML('beforeend', performerHtml);
+
+                        // Add to current performers array
+                        currentPerformerIds.push(performerId);
+
+                        // Setup remove handler for new performer (same as tags)
+                        const newPerformer = performersContainer.lastElementChild;
+                        newPerformer.querySelector('.metadata-tag-remove').addEventListener('click', (e) => {
+                            const removePerformerId = e.target.dataset.performerId;
+                            e.target.closest('.metadata-tag').remove();
+                            // Remove from current performers array
+                            currentPerformerIds = currentPerformerIds.filter(id => id !== removePerformerId);
+                        });
+
+                        // Clear search
+                        performerSearch.value = '';
+                        performerResults.innerHTML = '';
+                    });
+                });
+            }, 300);
+        });
+    }
+
+    // Performer removal (using same classes as tags)
+    body.querySelectorAll('.metadata-performers .metadata-tag-remove').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const performerId = e.target.dataset.performerId;
+            const performerEl = e.target.closest('.metadata-tag');
+            if (performerEl) {
+                performerEl.remove();
+                // Remove from current performers array
+                currentPerformerIds = currentPerformerIds.filter(id => id !== performerId);
+            }
+        });
+    });
+
+    // Tag search functionality (existing code remains the same)
+    const tagSearch = body.querySelector('.metadata-tag-search:not(.metadata-performer-search)');
+    const tagResults = body.querySelector('.metadata-tag-results:not(.metadata-performer-results)');
+    let tagSearchTimeout;
 
     if (tagSearch) {
         tagSearch.addEventListener('input', (e) => {
-            clearTimeout(searchTimeout);
+            clearTimeout(tagSearchTimeout);
             const query = e.target.value.trim();
 
             if (query.length < 2) {
@@ -168,7 +263,8 @@ function setupGalleryMetadataHandlers(metadata) {
                 return;
             }
 
-            searchTimeout = setTimeout(async () => {
+            tagSearchTimeout = setTimeout(async () => {
+                const { searchTags } = await import('./graphql.js');
                 const tags = await searchTags(query);
                 tagResults.innerHTML = tags.map(tag =>
                     `<div class="metadata-tag-result" data-tag-id="${tag.id}" data-tag-name="${tag.name}">
@@ -188,7 +284,7 @@ function setupGalleryMetadataHandlers(metadata) {
                         }
 
                         // Add tag to list
-                        const tagsContainer = body.querySelector('.metadata-tags');
+                        const tagsContainer = body.querySelector('.metadata-tags:not(.metadata-performers)');
                         const tagHtml = `<span class="metadata-tag" data-tag-id="${tagId}">
                             ${tagName}
                             <button class="metadata-tag-remove" data-tag-id="${tagId}">×</button>
@@ -216,8 +312,8 @@ function setupGalleryMetadataHandlers(metadata) {
         });
     }
 
-    // Tag removal
-    body.querySelectorAll('.metadata-tag-remove').forEach(btn => {
+    // Tag removal (existing code)
+    body.querySelectorAll('.metadata-tags:not(.metadata-performers) .metadata-tag-remove').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const tagId = e.target.dataset.tagId;
             const tagEl = e.target.closest('.metadata-tag');
@@ -250,6 +346,15 @@ function setupGalleryMetadataHandlers(metadata) {
             if (tagsChanged) {
                 // Update gallery tags directly with a separate mutation
                 await updateGalleryTagsSeparately(metadata.id, currentTagIds);
+            }
+
+            // Check if performers have changed
+            const performersChanged = JSON.stringify(currentPerformerIds.sort()) !== JSON.stringify(originalPerformerIds.sort());
+            
+            if (performersChanged) {
+                // Update gallery performers
+                const { updateGalleryPerformers } = await import('./graphql.js');
+                await updateGalleryPerformers(metadata.id, currentPerformerIds);
             }
 
             saveBtn.textContent = 'Saved ✓';

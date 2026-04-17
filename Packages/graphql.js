@@ -21,9 +21,12 @@ export async function fetchGalleryMetadata(galleryId) {
                 id
                 name
             }
+            performers {
+                id
+                name
+            }
         }
     }`;
-
     try {
         const response = await safeFetch('/graphql', {
             method: 'POST',
@@ -74,6 +77,89 @@ export async function updateGalleryMetadata(galleryId, updates) {
     } catch (error) {
         console.error('[Image Deck] Error updating gallery metadata:', error);
         return null;
+    }
+}
+
+export async function updateGalleryPerformers(galleryId, performerIds) {
+    const mutation = `mutation GalleryUpdate($input: GalleryUpdateInput!) {
+        galleryUpdate(input: $input) {
+            id
+            performers {
+                id
+                name
+            }
+        }
+    }`;
+
+    const input = { 
+        id: galleryId, 
+        performer_ids: performerIds 
+    };
+
+    try {
+        const response = await fetch('/graphql', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: mutation, variables: { input } })
+        });
+
+        const data = await response.json();
+        return data?.data?.galleryUpdate || null;
+    } catch (error) {
+        console.error('[Image Deck] Error updating gallery performers:', error);
+        return null;
+    }
+}
+
+// Add searchPerformers function (similar to searchTags)
+export async function searchPerformers(query) {
+    const gql = `query FindPerformers($filter: FindFilterType, $performer_filter: PerformerFilterType) {
+        findPerformers(filter: $filter, performer_filter: $performer_filter) {
+            performers {
+                id
+                name
+            }
+        }
+    }`;
+
+    const searchTerm = query.trim();
+    if (!searchTerm) {
+        return [];
+    }
+
+    try {
+        const approaches = [
+            { q: searchTerm },
+            { q: `*${searchTerm}*` },
+        ];
+
+        for (const filter of approaches) {
+            const variables = {
+                filter: { 
+                    per_page: 20, 
+                    ...filter
+                },
+                performer_filter: {}
+            };
+
+            const response = await fetch('/graphql', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: gql, variables })
+            });
+
+            const data = await response.json();
+            const performers = data?.data?.findPerformers?.performers || [];
+            
+            if (performers.length > 0) {
+                return performers;
+            }
+        }
+        
+        return [];
+    } catch (error) {
+        console.error('[Image Deck] Error searching performers:', error);
+        return [];
     }
 }
 
