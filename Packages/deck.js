@@ -229,8 +229,76 @@ async function forceRefreshGalleryCovers() {
     console.log('[Image Deck] Force refreshing gallery covers');
     
     try {
-        // Get fresh context with current filters
-        const freshContext = detectContext();
+        // Get fresh context with current filters BUT ensure gallery mode is preserved
+        let freshContext = detectContext();
+        
+        // Fix: Ensure we stay in gallery mode when we're supposed to be in gallery mode
+        if (window.location.pathname.startsWith('/galleries') || 
+            sessionStorage.getItem('imageDeckMode') === 'gallery' ||
+            (storedContextInfo && storedContextInfo.type === 'galleries')) {
+            
+            if (!freshContext || freshContext.type !== 'galleries') {
+                // Force gallery context
+                const urlFilters = parseUrlFilters(window.location.search);
+                
+                // Apply tag filters from session storage
+                const tagFilter = sessionStorage.getItem('galleryTagFilter');
+                if (tagFilter) {
+                    try {
+                        const filterObj = JSON.parse(tagFilter);
+                        if ((filterObj.included && filterObj.included.length > 0) || 
+                            (filterObj.excluded && filterObj.excluded.length > 0)) {
+                            
+                            const finalFilters = urlFilters || {};
+                            
+                            // Add included tags
+                            if (filterObj.included.length > 0) {
+                                finalFilters.tags = {
+                                    value: filterObj.included,
+                                    modifier: "INCLUDES"
+                                };
+                            }
+                            // Add excluded tags
+                            if (filterObj.excluded.length > 0) {
+                                if (finalFilters.tags) {
+                                    finalFilters.tags.excluded = filterObj.excluded;
+                                } else {
+                                    finalFilters.tags = {
+                                        value: [],
+                                        modifier: "INCLUDES",
+                                        excluded: filterObj.excluded
+                                    };
+                                }
+                            }
+                            
+                            freshContext = {
+                                type: 'galleries',
+                                isGalleryListing: true,
+                                filter: finalFilters,
+                                hash: window.location.hash
+                            };
+                        }
+                    } catch (e) {
+                        console.error('[Image Deck] Error applying stored tag filter:', e);
+                    }
+                } else if (urlFilters) {
+                    freshContext = {
+                        type: 'galleries',
+                        isGalleryListing: true,
+                        filter: urlFilters,
+                        hash: window.location.hash
+                    };
+                } else {
+                    freshContext = {
+                        type: 'galleries',
+                        isGalleryListing: true,
+                        filter: {},
+                        hash: window.location.hash
+                    };
+                }
+            }
+        }
+        
         console.log('[Image Deck] Fresh context:', freshContext);
         
         if (!freshContext) {
