@@ -461,6 +461,24 @@ export async function openDeck(targetImageId = null) {
         let detectedContext = detectContext();
         const storedMode = sessionStorage.getItem('imageDeckMode');
         
+		    if (detectedContext && detectedContext.type === 'galleries' && storedMode === 'image') {
+        // We're in image mode but context says galleries, override to images
+        detectedContext = {
+            type: 'images',
+            isGeneralListing: true,
+            filter: detectedContext.filter || {},
+            hash: window.location.hash
+        };
+    } else if (detectedContext && (detectedContext.type === 'images' || detectedContext.isGeneralListing) && storedMode === 'gallery') {
+        // We're in gallery mode but context says images, override to galleries
+        detectedContext = {
+            type: 'galleries',
+            isGalleryListing: true,
+            filter: detectedContext.filter || {},
+            hash: window.location.hash
+        };
+    }
+		
         if (!detectedContext?.isPerformerContext) {
             if (storedMode === 'image') {
                 detectedContext = {

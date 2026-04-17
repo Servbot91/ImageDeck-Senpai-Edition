@@ -27,6 +27,10 @@ export function detectContext() {
         const tagFilter = sessionStorage.getItem('galleryTagFilter');
         let filters = parseUrlFilters(search);
         
+        // Check if we're in image mode
+        const storedMode = sessionStorage.getItem('imageDeckMode');
+        const isImageMode = storedMode === 'image';
+        
         if (tagFilter) {
             try {
                 const filterObj = JSON.parse(tagFilter);
@@ -81,9 +85,11 @@ export function detectContext() {
             }
         }
         
+        // Use 'images' type when in image mode, otherwise 'galleries'
         return { 
-            type: 'galleries', 
-            isGalleryListing: true, 
+            type: isImageMode ? 'images' : 'galleries', 
+            isGalleryListing: !isImageMode, 
+            isGeneralListing: isImageMode,
             filter: filters, 
             hash 
         };
@@ -275,8 +281,12 @@ export function getVisibleGalleryCovers() {
 }
 
 export async function fetchContextImages(context, page = 1, perPage = 50) {
-    const { type, id, filter, isSingleGallery, isGalleryListing } = context;
-    const isFetchingGalleries = isGalleryListing || (type === 'galleries' && !isSingleGallery);
+    const { type, id, filter, isSingleGallery, isGalleryListing, isGeneralListing } = context;
+    const isFetchingGalleries = isGalleryListing || 
+                               (type === 'galleries' && !isSingleGallery) ||
+                               (type === 'galleries' && isGeneralListing === false);
+    
+    const isFetchingImages = !isFetchingGalleries;
 
     let query = '';
     if (isFetchingGalleries) {
@@ -311,6 +321,7 @@ export async function fetchContextImages(context, page = 1, perPage = 50) {
             }
         }`;
     }
+
 
     let activeFilter = {};
     let exclusions = {}; 
@@ -438,36 +449,36 @@ export async function fetchContextImages(context, page = 1, perPage = 50) {
                 url: `/galleries/${gallery.id}`
             }));
         } else {
-            let result = data?.data?.findImages;
-            totalCount = result?.count || 0;
-            
-            if (Object.keys(exclusions).length > 0 && result?.images) {
-                result.images = result.images.filter(item => {
-                    for (const [fieldType, excludedIds] of Object.entries(exclusions)) {
-                        if (excludedIds.length > 0) {
-                            if (item[fieldType] && item[fieldType].length > 0) {
-                                const hasExcludedItem = item[fieldType].some(fieldItem => 
-                                    excludedIds.includes(fieldItem.id)
-                                );
-                                
-                                if (hasExcludedItem) {
-                                    return false;
-                                }
-                            }
-                        }
-                    }
-                    return true; 
-                });
-                
-                totalCount = result.images.length;
-            }
-            
-            normalizedImages = (result?.images || []).map(img => ({
-                ...img,
-                isGallery: false,
-                type: 'image'
-            }));
-        }
+			let result = data?.data?.findImages;
+			totalCount = result?.count || 0;
+			
+			if (Object.keys(exclusions).length > 0 && result?.images) {
+				result.images = result.images.filter(item => {
+					for (const [fieldType, excludedIds] of Object.entries(exclusions)) {
+						if (excludedIds.length > 0) {
+							if (item[fieldType] && item[fieldType].length > 0) {
+								const hasExcludedItem = item[fieldType].some(fieldItem => 
+									excludedIds.includes(fieldItem.id)
+								);
+								
+								if (hasExcludedItem) {
+									return false;
+								}
+							}
+						}
+					}
+					return true; 
+				});
+				
+				totalCount = result.images.length;
+			}
+			
+			normalizedImages = (result?.images || []).map(img => ({
+				...img,
+				isGallery: false,
+				type: 'image'
+			}));
+		}
 
         const calculatedTotalPages = Math.ceil(totalCount / perPage);
 
