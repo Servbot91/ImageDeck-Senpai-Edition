@@ -22,14 +22,16 @@ export function detectContext() {
     const hash = window.location.hash;
     const search = window.location.search;
     
+    // Parse URL filters first
+    let filters = parseUrlFilters(search);
+    
+    // Check if we're in image mode
+    const storedMode = sessionStorage.getItem('imageDeckMode');
+    const isImageMode = storedMode === 'image';
+    
     // Handle main page with filters
     if (path === '/') {
         const tagFilter = sessionStorage.getItem('galleryTagFilter');
-        let filters = parseUrlFilters(search);
-        
-        // Check if we're in image mode
-        const storedMode = sessionStorage.getItem('imageDeckMode');
-        const isImageMode = storedMode === 'image';
         
         if (tagFilter) {
             try {
@@ -95,83 +97,86 @@ export function detectContext() {
         };
     }
 
-	if (path.startsWith('/galleries')) {
-		const galleryIdMatch = path.match(/^\/galleries\/(\d+)/);
-		const params = new URLSearchParams(search);
-		
-		if (galleryIdMatch) {
-			const filter = parseUrlFilters(search);
-			if (!params.get('sortby') && !params.get('sortdir')) {
-				filter.sortBy = 'title';
-				filter.sortDir = 'asc';
-			}
-			return { type: 'galleries', id: galleryIdMatch[1], hash, isSingleGallery: true, filter };
-		} else {
-			let filters = parseUrlFilters(search);
-			
-			const tagFilter = sessionStorage.getItem('galleryTagFilter');
-			if (tagFilter) {
-				try {
-					const filterObj = JSON.parse(tagFilter);
-					
-					// Handle tag filters
-					if ((filterObj.includedTags && filterObj.includedTags.length > 0) || 
-						(filterObj.excludedTags && filterObj.excludedTags.length > 0)) {
-						if (!filters) {
-							filters = {};
-						}
-						if (filterObj.includedTags && filterObj.includedTags.length > 0) {
-							filters.tags = {
-								value: filterObj.includedTags,
-								modifier: "INCLUDES"
-							};
-						}
-						if (filterObj.excludedTags && filterObj.excludedTags.length > 0) {
-							if (filters.tags) {
-								filters.tags.excluded = filterObj.excludedTags;
-							} else {
-								filters.tags = {
-									value: [],
-									modifier: "INCLUDES",
-									excluded: filterObj.excludedTags
-								};
-							}
-						}
-					}
-					
-					// Handle performer filters
-					if ((filterObj.includedPerformers && filterObj.includedPerformers.length > 0) || 
-						(filterObj.excludedPerformers && filterObj.excludedPerformers.length > 0)) {
-						if (!filters) {
-							filters = {};
-						}
-						if (filterObj.includedPerformers && filterObj.includedPerformers.length > 0) {
-							filters.performers = {
-								value: filterObj.includedPerformers,
-								modifier: "INCLUDES"
-							};
-						}
-						if (filterObj.excludedPerformers && filterObj.excludedPerformers.length > 0) {
-							if (filters.performers) {
-								filters.performers.excluded = filterObj.excludedPerformers;
-							} else {
-								filters.performers = {
-									value: [],
-									modifier: "INCLUDES",
-									excluded: filterObj.excludedPerformers
-								};
-							}
-						}
-					}
-				} catch (e) {
-					console.error('Error parsing tag filter:', e);
-				}
-			}
-			
-			return { type: 'galleries', isGalleryListing: true, filter: filters, hash };
-		}
-	}
+    // Handle galleries pages
+    if (path.startsWith('/galleries')) {
+        const galleryIdMatch = path.match(/^\/galleries\/(\d+)/);
+        
+        if (galleryIdMatch) {
+            const filter = parseUrlFilters(search);
+            // Default sorting for single gallery
+            if (!new URLSearchParams(search).get('sortby') && !new URLSearchParams(search).get('sortdir')) {
+                filter.sortBy = 'title';
+                filter.sortDir = 'asc';
+            }
+            return { type: 'galleries', id: galleryIdMatch[1], hash, isSingleGallery: true, filter };
+        } else {
+            // Gallery listing page
+            let filters = parseUrlFilters(search);
+            
+            const tagFilter = sessionStorage.getItem('galleryTagFilter');
+            if (tagFilter) {
+                try {
+                    const filterObj = JSON.parse(tagFilter);
+                    
+                    // Handle tag filters
+                    if ((filterObj.includedTags && filterObj.includedTags.length > 0) || 
+                        (filterObj.excludedTags && filterObj.excludedTags.length > 0)) {
+                        if (!filters) {
+                            filters = {};
+                        }
+                        if (filterObj.includedTags && filterObj.includedTags.length > 0) {
+                            filters.tags = {
+                                value: filterObj.includedTags,
+                                modifier: "INCLUDES"
+                            };
+                        }
+                        if (filterObj.excludedTags && filterObj.excludedTags.length > 0) {
+                            if (filters.tags) {
+                                filters.tags.excluded = filterObj.excludedTags;
+                            } else {
+                                filters.tags = {
+                                    value: [],
+                                    modifier: "INCLUDES",
+                                    excluded: filterObj.excludedTags
+                                };
+                            }
+                        }
+                    }
+                    
+                    // Handle performer filters
+                    if ((filterObj.includedPerformers && filterObj.includedPerformers.length > 0) || 
+                        (filterObj.excludedPerformers && filterObj.excludedPerformers.length > 0)) {
+                        if (!filters) {
+                            filters = {};
+                        }
+                        if (filterObj.includedPerformers && filterObj.includedPerformers.length > 0) {
+                            filters.performers = {
+                                value: filterObj.includedPerformers,
+                                modifier: "INCLUDES"
+                            };
+                        }
+                        if (filterObj.excludedPerformers && filterObj.excludedPerformers.length > 0) {
+                            if (filters.performers) {
+                                filters.performers.excluded = filterObj.excludedPerformers;
+                            } else {
+                                filters.performers = {
+                                    value: [],
+                                    modifier: "INCLUDES",
+                                    excluded: filterObj.excludedPerformers
+                                };
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error parsing tag filter:', e);
+                }
+            }
+            
+            return { type: 'galleries', isGalleryListing: true, filter: filters, hash };
+        }
+    }
 
+    // Handle images pages
     if (path.startsWith('/images')) {
         const filters = parseUrlFilters(search);
         return {
@@ -183,22 +188,44 @@ export function detectContext() {
         };
     }
 
-    const idMatch = path.match(/\/(\w+)\/(\d+)/);
-    if (idMatch) {
-        const [, type, id] = idMatch;
-        const isImagesTab = hash.includes('images') || 
-                           document.querySelector('.nav-tabs .active')?.textContent?.includes('Images');
-
-        if (isImagesTab || type === 'galleries') {
-            const filter = {};
-            if (type === 'performers') filter.performers = { value: [id], modifier: "INCLUDES" };
-            if (type === 'tags') filter.tags = { value: [id], modifier: "INCLUDES" };
-            if (type === 'studios') filter.studios = { value: [id], modifier: "INCLUDES" };
-
-            return { type, id, filter, hash };
+    // Handle performer pages
+    const performerMatch = path.match(/^\/performers\/(\d+)(?:\/(galleries|images))?/);
+    if (performerMatch) {
+        const [, performerId, viewType] = performerMatch;
+        
+        // Determine if we should show galleries or images
+        let type = 'galleries';
+        if (viewType === 'images' || isImageMode) {
+            type = 'images';
+        } else if (viewType === 'galleries') {
+            type = 'galleries';
         }
+        
+        // Build filter for this performer
+        const filter = {
+            performers: { value: [performerId], modifier: "INCLUDES" },
+            sortBy: filters?.sortBy || 'created_at',
+            sortDir: filters?.sortDir || 'desc'
+        };
+        
+        // Copy other filters from URL if present
+        Object.keys(filters || {}).forEach(key => {
+            if (key !== 'performers' && key !== 'sortBy' && key !== 'sortDir') {
+                filter[key] = filters[key];
+            }
+        });
+        
+        return { 
+            type, 
+            id: performerId,
+            performerId: performerId,
+            isPerformerContext: true,
+            filter,
+            hash 
+        };
     }
 
+    // Fallback to visible images
     if (document.querySelectorAll('img[src*="/image/"]').length > 0) {
         return {
             type: 'images',
@@ -301,7 +328,11 @@ export async function fetchContextImages(context, page = 1, perPage = 50) {
                     }
                     tags {
                         id
+                        name
                     }
+                    date
+                    rating100
+                    organized
                 }
             }
         }`;
@@ -313,71 +344,100 @@ export async function fetchContextImages(context, page = 1, perPage = 50) {
                     id title paths { thumbnail image }
                     performers {
                         id
+                        name
                     }
                     tags {
                         id
+                        name
                     }
+                    date
+                    rating100
+                    organized
                 }
             }
         }`;
     }
 
-
+    // Build the filter object for GraphQL
     let activeFilter = {};
     let exclusions = {}; 
     
+    // Handle single gallery context
     if (isSingleGallery && id) {
         activeFilter = { galleries: { value: [id], modifier: "INCLUDES" } };
-    } else if (filter) {
+    } 
+    // Handle filters from context (including tag filters from sessionStorage)
+    else if (filter) {
         if (isFetchingGalleries) {
             const galleryAllowedFields = [
-                'tags', 'performers', 'studios', 'markers', 
-                'rating100', 'organized', 'is_missing', 'image_count',
-                'date', 'url', 'photographer', 'code'
+                'tags', 'performers', 'studios', 'rating100', 'organized', 
+                'date', 'is_missing', 'image_count'
             ];
             
             galleryAllowedFields.forEach(field => {
                 if (filter[field]) {
+                    // Handle exclusions
                     if (filter[field].excluded && filter[field].excluded.length > 0) {
                         exclusions[field] = filter[field].excluded;
+                        // Include positive filters if they exist
                         if (filter[field].value && filter[field].value.length > 0) {
                             activeFilter[field] = {
                                 value: filter[field].value,
-                                modifier: filter[field].modifier
+                                modifier: filter[field].modifier || "INCLUDES"
                             };
                         }
-                    } else {
+                    } 
+                    // Handle regular filters
+                    else if (filter[field].value && filter[field].value.length > 0) {
                         activeFilter[field] = {
                             value: filter[field].value,
-                            modifier: filter[field].modifier
+                            modifier: filter[field].modifier || "INCLUDES"
                         };
                     }
                 }
             });
         } else {
             const imageAllowedFields = [
-                'tags', 'performers', 'studios', 'markers', 'galleries', 
-                'path', 'rating100', 'organized', 'is_missing'
+                'tags', 'performers', 'studios', 'rating100', 'organized', 
+                'date', 'is_missing', 'galleries'
             ];
             
             imageAllowedFields.forEach(field => {
                 if (filter[field]) {
+                    // Handle exclusions
                     if (filter[field].excluded && filter[field].excluded.length > 0) {
                         exclusions[field] = filter[field].excluded;
+                        // Include positive filters if they exist
                         if (filter[field].value && filter[field].value.length > 0) {
                             activeFilter[field] = {
                                 value: filter[field].value,
-                                modifier: filter[field].modifier
+                                modifier: filter[field].modifier || "INCLUDES"
                             };
                         }
-                    } else {
+                    } 
+                    // Handle regular filters
+                    else if (filter[field].value && filter[field].value.length > 0) {
                         activeFilter[field] = {
                             value: filter[field].value,
-                            modifier: filter[field].modifier
+                            modifier: filter[field].modifier || "INCLUDES"
                         };
                     }
                 }
             });
+        }
+    }
+
+    if (context.performerId) {
+        if (isFetchingGalleries) {
+            activeFilter.performers = {
+                value: [context.performerId],
+                modifier: "INCLUDES"
+            };
+        } else {
+            activeFilter.performers = {
+                value: [context.performerId],
+                modifier: "INCLUDES"
+            };
         }
     }
 
@@ -417,6 +477,7 @@ export async function fetchContextImages(context, page = 1, perPage = 50) {
             let result = data?.data?.findGalleries;
             totalCount = result?.count || 0;
             
+            // Apply client-side exclusion filtering if needed
             if (Object.keys(exclusions).length > 0 && result?.galleries) {
                 result.galleries = result.galleries.filter(item => {
                     for (const [fieldType, excludedIds] of Object.entries(exclusions)) {
@@ -443,42 +504,54 @@ export async function fetchContextImages(context, page = 1, perPage = 50) {
                 title: gallery.title,
                 image_count: gallery.image_count,
                 performers: gallery.performers || [], 
+                tags: gallery.tags || [],
+                date: gallery.date,
+                rating100: gallery.rating100,
+                organized: gallery.organized,
                 isGallery: true,
                 type: 'gallery',
                 paths: { image: gallery.cover?.paths?.image || gallery.cover?.paths?.thumbnail || '' },
                 url: `/galleries/${gallery.id}`
             }));
         } else {
-			let result = data?.data?.findImages;
-			totalCount = result?.count || 0;
-			
-			if (Object.keys(exclusions).length > 0 && result?.images) {
-				result.images = result.images.filter(item => {
-					for (const [fieldType, excludedIds] of Object.entries(exclusions)) {
-						if (excludedIds.length > 0) {
-							if (item[fieldType] && item[fieldType].length > 0) {
-								const hasExcludedItem = item[fieldType].some(fieldItem => 
-									excludedIds.includes(fieldItem.id)
-								);
-								
-								if (hasExcludedItem) {
-									return false;
-								}
-							}
-						}
-					}
-					return true; 
-				});
-				
-				totalCount = result.images.length;
-			}
-			
-			normalizedImages = (result?.images || []).map(img => ({
-				...img,
-				isGallery: false,
-				type: 'image'
-			}));
-		}
+            let result = data?.data?.findImages;
+            totalCount = result?.count || 0;
+            
+            // Apply client-side exclusion filtering if needed
+            if (Object.keys(exclusions).length > 0 && result?.images) {
+                result.images = result.images.filter(item => {
+                    for (const [fieldType, excludedIds] of Object.entries(exclusions)) {
+                        if (excludedIds.length > 0) {
+                            if (item[fieldType] && item[fieldType].length > 0) {
+                                const hasExcludedItem = item[fieldType].some(fieldItem => 
+                                    excludedIds.includes(fieldItem.id)
+                                );
+                                
+                                if (hasExcludedItem) {
+                                    return false;
+                                }
+                            }
+                        }
+                    }
+                    return true; 
+                });
+
+                totalCount = result.images.length;
+            }
+            
+            normalizedImages = (result?.images || []).map(img => ({
+                id: img.id,
+                title: img.title,
+                performers: img.performers || [],
+                tags: img.tags || [],
+                date: img.date,
+                rating100: img.rating100,
+                organized: img.organized,
+                paths: img.paths,
+                isGallery: false,
+                type: 'image'
+            }));
+        }
 
         const calculatedTotalPages = Math.ceil(totalCount / perPage);
 
