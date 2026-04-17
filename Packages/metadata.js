@@ -1,5 +1,5 @@
 // ui/metadata.js
-import { fetchImageMetadata, updateImageMetadata, updateImageTags, searchTags, fetchGalleryMetadata } from './graphql.js';
+import { fetchImageMetadata, updateImageMetadata, updateImageTags, searchTags, fetchGalleryMetadata, updateGalleryMetadata } from './graphql.js';
 
 let currentMetadata = null;
 let currentSwiperRef = null; // Reference to current swiper instance
@@ -74,12 +74,27 @@ function populateGalleryMetadataModal(metadata) {
 
         <div class="metadata-section">
             <label>Title</label>
-            <input type="text" class="metadata-title" value="${metadata.title || ''}" placeholder="Enter title..." readonly>
+            <input type="text" class="metadata-title" value="${metadata.title || ''}" placeholder="Enter title...">
         </div>
 
         <div class="metadata-section">
             <label>Details</label>
-            <textarea class="metadata-details" placeholder="Enter details..." readonly>${metadata.details || ''}</textarea>
+            <textarea class="metadata-details" placeholder="Enter details...">${metadata.details || ''}</textarea>
+        </div>
+
+        <!-- TAGGER SECTION -->
+        <div class="metadata-section">
+            <label>Tags</label>
+            <div class="metadata-tags">
+                ${metadata.tags ? metadata.tags.map(tag =>
+                    `<span class="metadata-tag" data-tag-id="${tag.id}">
+                        ${tag.name}
+                        <button class="metadata-tag-remove" data-tag-id="${tag.id}">×</button>
+                    </span>`
+                ).join('') : ''}
+            </div>
+            <input type="text" class="metadata-tag-search" placeholder="Search tags...">
+            <div class="metadata-tag-results"></div>
         </div>
 
         <div class="metadata-section">
@@ -104,16 +119,184 @@ function populateGalleryMetadataModal(metadata) {
             </div>
         </div>` : ''}
 
-        ${metadata.custom_fields ? `
-        <div class="metadata-section">
-            <label>Custom Fields</label>
-            <div class="metadata-custom-fields">
-                ${Object.entries(metadata.custom_fields).map(([key, value]) => 
-                    `<div><strong>${key}:</strong> ${value}</div>`
-                ).join('')}
-            </div>
-        </div>` : ''}
+        <div class="metadata-actions">
+            <button class="metadata-save-btn">Save Changes</button>
+        </div>
     `;
+
+    setupGalleryMetadataHandlers(metadata);
+}
+
+function setupGalleryMetadataHandlers(metadata) {
+    const body = document.querySelector('.image-deck-metadata-body');
+    if (!body) return;
+
+    const saveBtn = body.querySelector('.metadata-save-btn');
+    if (!saveBtn) return;
+
+    // Store original tag IDs for comparison later
+    const originalTagIds = metadata.tags ? metadata.tags.map(tag => tag.id) : [];
+    let currentTagIds = [...originalTagIds];
+
+    // Tag search functionality
+    const tagSearch = body.querySelector('.metadata-tag-search');
+    const tagResults = body.querySelector('.metadata-tag-results');
+    let searchTimeout;
+
+    if (tagSearch) {
+        tagSearch.addEventListener('input', (e) => {
+            clearTimeout(searchTimeout);
+            const query = e.target.value.trim();
+
+            if (query.length < 2) {
+                tagResults.innerHTML = '';
+                return;
+            }
+
+            searchTimeout = setTimeout(async () => {
+                const tags = await searchTags(query);
+                tagResults.innerHTML = tags.map(tag =>
+                    `<div class="metadata-tag-result" data-tag-id="${tag.id}" data-tag-name="${tag.name}">
+                        ${tag.name}
+                    </div>`
+                ).join('');
+
+                // Add click handlers for results
+                tagResults.querySelectorAll('.metadata-tag-result').forEach(result => {
+                    result.addEventListener('click', (e) => {
+                        const tagId = e.target.dataset.tagId;
+                        const tagName = e.target.dataset.tagName;
+
+                        // Check if tag is already added
+                        if (currentTagIds.includes(tagId)) {
+                            return;
+                        }
+
+                        // Add tag to list
+                        const tagsContainer = body.querySelector('.metadata-tags');
+                        const tagHtml = `<span class="metadata-tag" data-tag-id="${tagId}">
+                            ${tagName}
+                            <button class="metadata-tag-remove" data-tag-id="${tagId}">×</button>
+                        </span>`;
+                        tagsContainer.insertAdjacentHTML('beforeend', tagHtml);
+
+                        // Add to current tags array
+                        currentTagIds.push(tagId);
+
+                        // Setup remove handler for new tag
+                        const newTag = tagsContainer.lastElementChild;
+                        newTag.querySelector('.metadata-tag-remove').addEventListener('click', (e) => {
+                            const removeTagId = e.target.dataset.tagId;
+                            e.target.closest('.metadata-tag').remove();
+                            // Remove from current tags array
+                            currentTagIds = currentTagIds.filter(id => id !== removeTagId);
+                        });
+
+                        // Clear search
+                        tagSearch.value = '';
+                        tagResults.innerHTML = '';
+                    });
+                });
+            }, 300);
+        });
+    }
+
+    // Tag removal
+    body.querySelectorAll('.metadata-tag-remove').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const tagId = e.target.dataset.tagId;
+            const tagEl = e.target.closest('.metadata-tag');
+            if (tagEl) {
+                tagEl.remove();
+                // Remove from current tags array
+                currentTagIds = currentTagIds.filter(id => id !== tagId);
+            }
+        });
+    });
+
+    saveBtn.addEventListener('click', async () => {
+        const title = body.querySelector('.metadata-title').value;
+        const details = body.querySelector('.metadata-details').value;
+
+        saveBtn.textContent = 'Saving...';
+        saveBtn.disabled = true;
+
+        try {
+            // Update gallery metadata (title, details)
+            const result = await updateGalleryMetadata(metadata.id, { title, details });
+            
+            if (!result) {
+                throw new Error('Failed to update gallery metadata');
+            }
+
+            // Check if tags have changed
+            const tagsChanged = JSON.stringify(currentTagIds.sort()) !== JSON.stringify(originalTagIds.sort());
+            
+            if (tagsChanged) {
+                // Update gallery tags directly with a separate mutation
+                await updateGalleryTagsSeparately(metadata.id, currentTagIds);
+            }
+
+            saveBtn.textContent = 'Saved ✓';
+            
+            // Update the filename display
+            const filenameEl = body.querySelector('.metadata-filename');
+            if (filenameEl) {
+                filenameEl.textContent = title || 'Untitled';
+            }
+            
+            setTimeout(() => {
+                saveBtn.textContent = 'Save Changes';
+                saveBtn.disabled = false;
+            }, 2000);
+            
+        } catch (error) {
+            console.error('[Image Deck] Error updating gallery metadata:', error);
+            saveBtn.textContent = 'Error!';
+            setTimeout(() => {
+                saveBtn.textContent = 'Save Changes';
+                saveBtn.disabled = false;
+            }, 2000);
+        }
+    });
+}
+
+async function updateGalleryTagsSeparately(galleryId, tagIds) {
+    try {
+        const mutation = `mutation GalleryUpdate($input: GalleryUpdateInput!) {
+            galleryUpdate(input: $input) {
+                id
+                title
+                tags {
+                    id
+                    name
+                }
+            }
+        }`;
+
+        const input = { 
+            id: galleryId, 
+            tag_ids: tagIds 
+        };
+
+        const response = await fetch('/graphql', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: mutation, variables: { input } })
+        });
+
+        const data = await response.json();
+        
+        if (data.errors) {
+            throw new Error(data.errors[0].message);
+        }
+
+        console.log('[Image Deck] Gallery tags updated successfully');
+        return data?.data?.galleryUpdate || null;
+    } catch (error) {
+        console.error('[Image Deck] Error updating gallery tags:', error);
+        throw error;
+    }
 }
 
 export function closeMetadataModal() {

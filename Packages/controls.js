@@ -722,7 +722,7 @@ function handleKeyboard(e) {
     if (!isDeckActive) return;
     
     // Check if we're in a modal input field
-    const inModalInput = e.target.closest('.gallery-tag-filter-modal') && 
+    const inModalInput = (e.target.closest('.gallery-tag-filter-modal') || e.target.closest('.image-deck-metadata-modal')) && 
                         (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA');
     
     // Allow spacebar in modal inputs
@@ -737,6 +737,7 @@ function handleKeyboard(e) {
     
     const swiper = state.getSwiper();
     
+    // Check if we're in ANY input or textarea field
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
         if (e.key === 'Escape') {
             closeMetadataModal();
@@ -819,6 +820,7 @@ function handleKeyboard(e) {
             break;
     }
 }
+
 // Cleanup function to remove event listeners
 export function cleanupEventHandlers() {
     eventManager.removeAll();

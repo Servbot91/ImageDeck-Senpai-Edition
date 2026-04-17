@@ -17,6 +17,10 @@ export async function fetchGalleryMetadata(galleryId) {
             updated_at
             url
             urls
+            tags {
+                id
+                name
+            }
         }
     }`;
 
@@ -42,6 +46,33 @@ async function safeFetch(url, options, operationName = '') {
         return response;
     } catch (error) {
         console.error(`[Image Deck] Error in ${operationName}:`, error);
+        return null;
+    }
+}
+
+export async function updateGalleryMetadata(galleryId, updates) {
+    const mutation = `mutation GalleryUpdate($input: GalleryUpdateInput!) {
+        galleryUpdate(input: $input) {
+            id
+            title
+            details
+            organized
+        }
+    }`;
+
+    const input = { id: galleryId, ...updates };
+
+    try {
+        const response = await fetch('/graphql', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: mutation, variables: { input } })
+        });
+
+        const data = await response.json();
+        return data?.data?.galleryUpdate || null;
+    } catch (error) {
+        console.error('[Image Deck] Error updating gallery metadata:', error);
         return null;
     }
 }
