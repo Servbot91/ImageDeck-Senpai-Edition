@@ -75,19 +75,18 @@ function getCurrentFilterTags() {
         try {
             const filterObj = JSON.parse(tagFilter);
             return {
-                includedTags: filterObj.includedTags || [],
-                excludedTags: filterObj.excludedTags || [],
+                includedTags: filterObj.includedTags || filterObj.included || [],
+                excludedTags: filterObj.excludedTags || filterObj.excluded || [],
                 includedPerformers: filterObj.includedPerformers || [],
                 excludedPerformers: filterObj.excludedPerformers || []
             };
         } catch (e) {
-            console.error('Error parsing tag filter:', e);
+            console.error('[Image Deck] Error parsing tag filter:', e);
             return { includedTags: [], excludedTags: [], includedPerformers: [], excludedPerformers: [] };
         }
     }
     return { includedTags: [], excludedTags: [], includedPerformers: [], excludedPerformers: [] };
 }
-
 
 async function updateDeckContentWithFilter() {
     console.log('[Image Deck] Updating content with filter');
@@ -853,24 +852,35 @@ async function createDeckUI() {
 async function updateFilterDisplayInUI() {
     const container = document.querySelector('.image-deck-container');
     if (!container) return;
+    
+    // Remove existing filter display
     const existingFilterDisplay = container.querySelector('.image-deck-current-filters');
     if (existingFilterDisplay) {
         existingFilterDisplay.remove();
     }
+    
     const currentTags = getCurrentFilterTags();
+    
+    // Only proceed if there are actually filters applied
     if (currentTags.includedTags.length > 0 || currentTags.excludedTags.length > 0 || 
         currentTags.includedPerformers.length > 0 || currentTags.excludedPerformers.length > 0) {
+        
         const allTagIds = [...currentTags.includedTags, ...currentTags.excludedTags];
         const allPerformerIds = [...currentTags.includedPerformers, ...currentTags.excludedPerformers];
-        const tagNames = await getTagNames(allTagIds);
-        const performerNames = await getPerformerNames(allPerformerIds);
+        
+        // Fetch names concurrently for better performance
+        const [tagNames, performerNames] = await Promise.all([
+            getTagNames(allTagIds),
+            getPerformerNames(allPerformerIds)
+        ]);
+        
         const filterDisplay = document.createElement('div');
         filterDisplay.className = 'image-deck-current-filters';
         filterDisplay.style.cssText = 'position: absolute; top: 60px; left: 20px; right: 20px; z-index: 10; display: flex; flex-wrap: wrap; gap: 5px;';
         
         let filterHtml = '<span style="color: #ccc; font-size: 12px; background: rgba(0,0,0,0.5); padding: 2px 8px; border-radius: 10px;">FILTERED BY:</span>';
         
-        // Tags
+        // Included Tags (green)
         filterHtml += currentTags.includedTags.map(tagId => {
             const tagName = tagNames[tagId] || `Tag:${tagId}`;
             return `
@@ -880,6 +890,7 @@ async function updateFilterDisplayInUI() {
                 </span>`;
         }).join('');
         
+        // Excluded Tags (red)
         filterHtml += currentTags.excludedTags.map(tagId => {
             const tagName = tagNames[tagId] || `Tag:${tagId}`;
             return `
@@ -889,7 +900,7 @@ async function updateFilterDisplayInUI() {
                 </span>`;
         }).join('');
         
-        // Performers (pink)
+        // Included Performers (pink)
         filterHtml += currentTags.includedPerformers.map(performerId => {
             const performerName = performerNames[performerId] || `Performer:${performerId}`;
             return `
@@ -899,17 +910,21 @@ async function updateFilterDisplayInUI() {
                 </span>`;
         }).join('');
         
+        // Excluded Performers (pink/darker)
         filterHtml += currentTags.excludedPerformers.map(performerId => {
             const performerName = performerNames[performerId] || `Performer:${performerId}`;
             return `
-                <span class="filter-tag-display" data-performer-id="${performerId}" style="color: white; font-size: 12px; background: rgba(233, 30, 99, 0.7); padding: 2px 8px; border-radius: 10px; display: flex; align-items: center;">
+                <span class="filter-tag-display" data-performer-id="${performerId}" style="color: white; font-size: 12px; background: rgba(156, 39, 176, 0.7); padding: 2px 8px; border-radius: 10px; display: flex; align-items: center;">
                     ❌ ${performerName}
                     <button class="remove-filter-tag" data-performer-id="${performerId}" style="background: none; border: none; color: white; margin-left: 5px; cursor: pointer; font-size: 14px;">×</button>
                 </span>`;
         }).join('');
         
         filterDisplay.innerHTML = filterHtml;
+        filterDisplay.style.display = 'flex'; // Make sure it's visible
         container.insertBefore(filterDisplay, container.querySelector('.image-deck-progress'));
+        
+        // Add event listeners for removing filters
         setTimeout(() => {
             filterDisplay.querySelectorAll('.remove-filter-tag').forEach(button => {
                 button.addEventListener('click', async (e) => {
@@ -918,11 +933,13 @@ async function updateFilterDisplayInUI() {
                     const performerId = button.dataset.performerId;
                     const currentTags = getCurrentFilterTags();
                     
+                    // Update the filter arrays
                     let newIncludedTags = currentTags.includedTags.filter(id => id !== tagId);
                     let newExcludedTags = currentTags.excludedTags.filter(id => id !== tagId);
                     let newIncludedPerformers = currentTags.includedPerformers.filter(id => id !== performerId);
                     let newExcludedPerformers = currentTags.excludedPerformers.filter(id => id !== performerId);
                     
+                    // Update session storage
                     if (newIncludedTags.length > 0 || newExcludedTags.length > 0 || 
                         newIncludedPerformers.length > 0 || newExcludedPerformers.length > 0) {
                         const filterObj = {
@@ -936,7 +953,13 @@ async function updateFilterDisplayInUI() {
                         sessionStorage.removeItem('galleryTagFilter');
                     }
                     
+                    // Trigger filter change event
                     window.dispatchEvent(new CustomEvent('galleryTagFilterChanged'));
+                    
+                    // Refresh the deck content
+                    setTimeout(() => {
+                        forceRefreshGalleryCovers();
+                    }, 100);
                 });
             });
         }, 0);
