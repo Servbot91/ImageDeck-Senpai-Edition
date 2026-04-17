@@ -97,6 +97,21 @@ function populateGalleryMetadataModal(metadata) {
             <textarea class="metadata-details" placeholder="Enter details...">${metadata.details || ''}</textarea>
         </div>
 
+        <!-- STUDIO SECTION -->
+        <div class="metadata-section">
+            <label>Studio</label>
+            <div class="metadata-tags metadata-studio">
+                ${metadata.studio ? `
+                    <span class="metadata-tag" data-studio-id="${metadata.studio.id}">
+                        ${metadata.studio.name}
+                        <button class="metadata-tag-remove" data-studio-id="${metadata.studio.id}">×</button>
+                    </span>
+                ` : ''}
+            </div>
+            <input type="text" class="metadata-tag-search metadata-studio-search" placeholder="Search studios...">
+            <div class="metadata-tag-results metadata-studio-results"></div>
+        </div>
+
         <!-- PERFORMERS SECTION -->
         <div class="metadata-section">
             <label>Performers</label>
@@ -164,13 +179,87 @@ function setupGalleryMetadataHandlers(metadata) {
     const saveBtn = body.querySelector('.metadata-save-btn');
     if (!saveBtn) return;
 
-    // Store original tag IDs and performer IDs for comparison later
+    // Store original values for comparison later
     const originalTagIds = metadata.tags ? metadata.tags.map(tag => tag.id) : [];
     const originalPerformerIds = metadata.performers ? metadata.performers.map(performer => performer.id) : [];
+    const originalStudioId = metadata.studio ? metadata.studio.id : null;
     let currentTagIds = [...originalTagIds];
     let currentPerformerIds = [...originalPerformerIds];
+    let currentStudioId = originalStudioId;
 
-    // Performer search functionality
+    // Studio search functionality
+    const studioSearch = body.querySelector('.metadata-studio-search');
+    const studioResults = body.querySelector('.metadata-studio-results');
+    let studioSearchTimeout;
+
+    if (studioSearch) {
+        studioSearch.addEventListener('input', (e) => {
+            clearTimeout(studioSearchTimeout);
+            const query = e.target.value.trim();
+
+            if (query.length < 2) {
+                studioResults.innerHTML = '';
+                return;
+            }
+
+            studioSearchTimeout = setTimeout(async () => {
+                // Import searchStudios function
+                const { searchStudios } = await import('./graphql.js');
+                const studios = await searchStudios(query);
+                studioResults.innerHTML = studios.map(studio =>
+                    `<div class="metadata-tag-result" data-studio-id="${studio.id}" data-studio-name="${studio.name}">
+                        ${studio.name}
+                    </div>`
+                ).join('');
+
+                // Add click handlers for results
+                studioResults.querySelectorAll('.metadata-tag-result').forEach(result => {
+                    result.addEventListener('click', (e) => {
+                        const studioId = e.target.dataset.studioId;
+                        const studioName = e.target.dataset.studioName;
+
+                        // Clear existing studio first
+                        const studioContainer = body.querySelector('.metadata-studio');
+                        studioContainer.innerHTML = '';
+
+                        // Add studio to list using the same metadata-tag class
+                        const studioHtml = `<span class="metadata-tag" data-studio-id="${studioId}">
+                            ${studioName}
+                            <button class="metadata-tag-remove" data-studio-id="${studioId}">×</button>
+                        </span>`;
+                        studioContainer.insertAdjacentHTML('beforeend', studioHtml);
+
+                        // Set current studio ID
+                        currentStudioId = studioId;
+
+                        // Setup remove handler for studio (same as tags)
+                        const newStudio = studioContainer.lastElementChild;
+                        newStudio.querySelector('.metadata-tag-remove').addEventListener('click', (e) => {
+                            e.target.closest('.metadata-tag').remove();
+                            currentStudioId = null;
+                        });
+
+                        // Clear search
+                        studioSearch.value = '';
+                        studioResults.innerHTML = '';
+                    });
+                });
+            }, 300);
+        });
+    }
+
+    // Studio removal (using same classes as tags)
+    body.querySelectorAll('.metadata-studio .metadata-tag-remove').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const studioEl = e.target.closest('.metadata-tag');
+            if (studioEl) {
+                studioEl.remove();
+                currentStudioId = null;
+            }
+        });
+    });
+
+    // Performer search functionality (existing code)
     const performerSearch = body.querySelector('.metadata-performer-search');
     const performerResults = body.querySelector('.metadata-performer-results');
     let performerSearchTimeout;
@@ -249,8 +338,8 @@ function setupGalleryMetadataHandlers(metadata) {
     });
 
     // Tag search functionality (existing code remains the same)
-    const tagSearch = body.querySelector('.metadata-tag-search:not(.metadata-performer-search)');
-    const tagResults = body.querySelector('.metadata-tag-results:not(.metadata-performer-results)');
+    const tagSearch = body.querySelector('.metadata-tag-search:not(.metadata-performer-search):not(.metadata-studio-search)');
+    const tagResults = body.querySelector('.metadata-tag-results:not(.metadata-performer-results):not(.metadata-studio-results)');
     let tagSearchTimeout;
 
     if (tagSearch) {
@@ -284,7 +373,7 @@ function setupGalleryMetadataHandlers(metadata) {
                         }
 
                         // Add tag to list
-                        const tagsContainer = body.querySelector('.metadata-tags:not(.metadata-performers)');
+                        const tagsContainer = body.querySelector('.metadata-tags:not(.metadata-performers):not(.metadata-studio)');
                         const tagHtml = `<span class="metadata-tag" data-tag-id="${tagId}">
                             ${tagName}
                             <button class="metadata-tag-remove" data-tag-id="${tagId}">×</button>
@@ -313,7 +402,7 @@ function setupGalleryMetadataHandlers(metadata) {
     }
 
     // Tag removal (existing code)
-    body.querySelectorAll('.metadata-tags:not(.metadata-performers) .metadata-tag-remove').forEach(btn => {
+    body.querySelectorAll('.metadata-tags:not(.metadata-performers):not(.metadata-studio) .metadata-tag-remove').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const tagId = e.target.dataset.tagId;
             const tagEl = e.target.closest('.metadata-tag');
@@ -355,6 +444,15 @@ function setupGalleryMetadataHandlers(metadata) {
                 // Update gallery performers
                 const { updateGalleryPerformers } = await import('./graphql.js');
                 await updateGalleryPerformers(metadata.id, currentPerformerIds);
+            }
+
+            // Check if studio has changed
+            const studioChanged = currentStudioId !== originalStudioId;
+            
+            if (studioChanged) {
+                // Update gallery studio
+                const { updateGalleryStudio } = await import('./graphql.js');
+                await updateGalleryStudio(metadata.id, currentStudioId);
             }
 
             saveBtn.textContent = 'Saved ✓';

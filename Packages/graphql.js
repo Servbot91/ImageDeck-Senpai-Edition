@@ -25,6 +25,10 @@ export async function fetchGalleryMetadata(galleryId) {
                 id
                 name
             }
+            studio {
+                id
+                name
+            }
         }
     }`;
     try {
@@ -159,6 +163,88 @@ export async function searchPerformers(query) {
         return [];
     } catch (error) {
         console.error('[Image Deck] Error searching performers:', error);
+        return [];
+    }
+}
+
+export async function updateGalleryStudio(galleryId, studioId) {
+    const mutation = `mutation GalleryUpdate($input: GalleryUpdateInput!) {
+        galleryUpdate(input: $input) {
+            id
+            studio {
+                id
+                name
+            }
+        }
+    }`;
+
+    const input = { 
+        id: galleryId, 
+        studio_id: studioId 
+    };
+
+    try {
+        const response = await fetch('/graphql', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: mutation, variables: { input } })
+        });
+
+        const data = await response.json();
+        return data?.data?.galleryUpdate || null;
+    } catch (error) {
+        console.error('[Image Deck] Error updating gallery studio:', error);
+        return null;
+    }
+}
+
+export async function searchStudios(query) {
+    const gql = `query FindStudios($filter: FindFilterType, $studio_filter: StudioFilterType) {
+        findStudios(filter: $filter, studio_filter: $studio_filter) {
+            studios {
+                id
+                name
+            }
+        }
+    }`;
+
+    const searchTerm = query.trim();
+    if (!searchTerm) {
+        return [];
+    }
+
+    try {
+        const approaches = [
+            { q: searchTerm },
+            { q: `*${searchTerm}*` },
+        ];
+
+        for (const filter of approaches) {
+            const variables = {
+                filter: { 
+                    per_page: 20, 
+                    ...filter
+                },
+                studio_filter: {}
+            };
+
+            const response = await fetch('/graphql', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: gql, variables })
+            });
+
+            const data = await response.json();
+            const studios = data?.data?.findStudios?.studios || [];
+            
+            if (studios.length > 0) {
+                return studios;
+            }
+        }
+        
+        return [];
+    } catch (error) {
+        console.error('[Image Deck] Error searching studios:', error);
         return [];
     }
 }
