@@ -79,55 +79,60 @@ export function detectContext() {
     }
 
     // 3. Check for Gallery Contexts (including root galleries)
-    if (path.startsWith('/galleries')) {
-        const galleryIdMatch = path.match(/^\/galleries\/(\d+)/);
-        const params = new URLSearchParams(search);
-        
-        if (galleryIdMatch) {
-            const filter = parseUrlFilters(search);
-            // For single gallery views, if no sort is specified, default to title asc
-            if (!params.get('sortby') && !params.get('sortdir')) {
-                filter.sortBy = 'title';
-                filter.sortDir = 'asc';
-            }
-            return { type: 'galleries', id: galleryIdMatch[1], hash, isSingleGallery: true, filter };
-        } else {
-            let filters = parseUrlFilters(search);
-            
-            // Check for tag filter in session storage
-            const tagFilter = sessionStorage.getItem('galleryTagFilter');
-            if (tagFilter) {
-                try {
-                    const filterObj = JSON.parse(tagFilter);
-                    if ((filterObj.included && filterObj.included.length > 0) || 
-                        (filterObj.excluded && filterObj.excluded.length > 0)) {
-                        // Apply tag filter to context
-                        if (!filters) {
-                            filters = {};
-                        }
-                        // Add included tags
-                        if (filterObj.included.length > 0) {
-                            filters.tags = {
-                                value: filterObj.included,
-                                modifier: "INCLUDES"
-                            };
-                        }
-                        // Add excluded tags
-                        if (filterObj.excluded.length > 0) {
-                            filters.tags = {
-                                ...filters.tags,
-                                excluded: filterObj.excluded
-                            };
-                        }
-                    }
-                } catch (e) {
-                    console.error('Error parsing tag filter:', e);
-                }
-            }
-            
-            return { type: 'galleries', isGalleryListing: true, filter: filters, hash };
-        }
-    }
+	if (path.startsWith('/galleries')) {
+		const galleryIdMatch = path.match(/^\/galleries\/(\d+)/);
+		const params = new URLSearchParams(search);
+		
+		if (galleryIdMatch) {
+			const filter = parseUrlFilters(search);
+			// For single gallery views, if no sort is specified, default to title asc
+			if (!params.get('sortby') && !params.get('sortdir')) {
+				filter.sortBy = 'title';
+				filter.sortDir = 'asc';
+			}
+			return { type: 'galleries', id: galleryIdMatch[1], hash, isSingleGallery: true, filter };
+		} else {
+			let filters = parseUrlFilters(search);
+			
+			// Check for tag filter in session storage
+			const tagFilter = sessionStorage.getItem('galleryTagFilter');
+			if (tagFilter) {
+				try {
+					const filterObj = JSON.parse(tagFilter);
+					if ((filterObj.included && filterObj.included.length > 0) || 
+						(filterObj.excluded && filterObj.excluded.length > 0)) {
+						// Apply tag filter to context
+						if (!filters) {
+							filters = {};
+						}
+						// Add included tags
+						if (filterObj.included.length > 0) {
+							filters.tags = {
+								value: filterObj.included,
+								modifier: "INCLUDES"
+							};
+						}
+						// Add excluded tags using the correct structure
+						if (filterObj.excluded.length > 0) {
+							if (filters.tags) {
+								filters.tags.excluded = filterObj.excluded;
+							} else {
+								filters.tags = {
+									value: [],
+									modifier: "INCLUDES",
+									excluded: filterObj.excluded
+								};
+							}
+						}
+					}
+				} catch (e) {
+					console.error('Error parsing tag filter:', e);
+				}
+			}
+			
+			return { type: 'galleries', isGalleryListing: true, filter: filters, hash };
+		}
+	}
 
     // 4. Handle /images page (with OR without search params)
     if (path.startsWith('/images')) {

@@ -149,44 +149,50 @@ function showGalleryTagFilter() {
         existingModal.remove();
     }
     
-    // Create modal for tag selection
+    // Create modal for tag selection with styling matching image details modal
     const modal = document.createElement('div');
-    modal.className = 'gallery-tag-filter-modal';
+    modal.className = 'gallery-tag-filter-modal image-deck-metadata-modal';
     modal.style.cssText = `
         position: fixed;
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        background: #2d2d2d;
-        border: 1px solid #444;
-        border-radius: 8px;
-        padding: 20px;
-        z-index: 10000;
-        min-width: 300px;
+        width: 90%;
         max-width: 500px;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-        max-height: 80vh;
-        overflow: hidden;
+        max-height: 90vh;
+        background: rgba(0, 0, 0, 0.95);
+        backdrop-filter: blur(20px);
+        border-radius: 20px;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+        z-index: 10000;
+        display: flex;
+        flex-direction: column;
     `;
     
     modal.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-            <h4>Filter Galleries by Tag</h4>
-            <button class="close-filter-modal" style="background: none; border: none; color: white; font-size: 20px; cursor: pointer; padding: 0; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;">×</button>
-        </div>
-        <div style="margin-bottom: 10px;">
-            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Included Tags</label>
-            <input type="text" class="included-tag-search" placeholder="Search tags..." style="width: 100%; padding: 8px; margin-bottom: 10px; background: #333; border: 1px solid #555; color: white; border-radius: 4px;">
-            <div class="included-tag-list" style="max-height: 150px; overflow-y: auto; margin-bottom: 15px; border: 1px solid #444; border-radius: 4px; padding: 5px;"></div>
-        </div>
-        <div style="margin-bottom: 10px;">
-            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Excluded Tags</label>
-            <input type="text" class="excluded-tag-search" placeholder="Search tags..." style="width: 100%; padding: 8px; margin-bottom: 10px; background: #333; border: 1px solid #555; color: white; border-radius: 4px;">
-            <div class="excluded-tag-list" style="max-height: 150px; overflow-y: auto; margin-bottom: 15px; border: 1px solid #444; border-radius: 4px; padding: 5px;"></div>
-        </div>
-        <div style="margin-top: 15px; display: flex; gap: 10px; justify-content: flex-end;">
-            <button class="clear-tag-filter btn btn-secondary" style="padding: 6px 12px;">Clear</button>
-            <button class="apply-tag-filter btn btn-primary" style="padding: 6px 12px;">Apply Filter</button>
+        <div class="image-deck-metadata-content" style="display: flex; flex-direction: column; height: auto; max-height: 90vh;">
+            <div class="image-deck-metadata-header">
+                <h3>Filter Galleries by Tag</h3>
+                <button class="close-filter-modal image-deck-metadata-close" style="width: 36px; height: 36px; font-size: 24px;">✕</button>
+            </div>
+            <div class="image-deck-metadata-body" style="flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column;">
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; color: rgba(255,255,255,0.7); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; font-weight: 600;">Included Tags</label>
+                    <input type="text" class="included-tag-search" placeholder="Search tags..." style="width: 100%; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; color: white; padding: 12px; font-size: 14px; margin-bottom: 10px;">
+                    <div class="included-tag-list" style="max-height: 150px; overflow-y: auto; background: rgba(255,255,255,0.05); border-radius: 8px; padding: 5px; margin-bottom: 15px;"></div>
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; color: rgba(255,255,255,0.7); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; font-weight: 600;">Excluded Tags</label>
+                    <input type="text" class="excluded-tag-search" placeholder="Search tags..." style="width: 100%; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; color: white; padding: 12px; font-size: 14px; margin-bottom: 10px;">
+                    <div class="excluded-tag-list" style="max-height: 150px; overflow-y: auto; background: rgba(255,255,255,0.05); border-radius: 8px; padding: 5px; margin-bottom: 15px;"></div>
+                </div>
+            </div>
+            <div style="padding: 0 20px 20px 20px;">
+                <div style="display: flex; gap: 12px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1);">
+                    <button class="clear-tag-filter" style="flex: 1; padding: 14px 24px; border-radius: 8px; background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s ease;">Clear</button>
+                    <button class="apply-tag-filter" style="flex: 1; padding: 14px 24px; border-radius: 8px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s ease;">Apply Filter</button>
+                </div>
+            </div>
         </div>
     `;
     

@@ -462,6 +462,45 @@ export async function openDeck(targetImageId = null) {
             };
         }
 
+        // === ADD THIS FIX: Apply stored gallery tag filters to context ===
+        const tagFilter = sessionStorage.getItem('galleryTagFilter');
+        if (tagFilter && detectedContext.type === 'galleries' && (detectedContext.isGalleryListing || !detectedContext.id)) {
+            try {
+                const filterObj = JSON.parse(tagFilter);
+                if ((filterObj.included && filterObj.included.length > 0) || 
+                    (filterObj.excluded && filterObj.excluded.length > 0)) {
+                    
+                    // Ensure filter object exists
+                    if (!detectedContext.filter) {
+                        detectedContext.filter = {};
+                    }
+                    
+                    // Apply included tags
+                    if (filterObj.included.length > 0) {
+                        detectedContext.filter.tags = {
+                            value: filterObj.included,
+                            modifier: "INCLUDES"
+                        };
+                    }
+                    
+                    // Apply excluded tags
+                    if (filterObj.excluded.length > 0) {
+                        if (detectedContext.filter.tags) {
+                            detectedContext.filter.tags.excluded = filterObj.excluded;
+                        } else {
+                            detectedContext.filter.tags = {
+                                value: [],
+                                modifier: "INCLUDES",
+                                excluded: filterObj.excluded
+                            };
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('[Image Deck] Error applying stored tag filter:', e);
+            }
+        }
+
         storedContextInfo = detectedContext;
         contextInfo = detectedContext;
         console.log('[Image Deck] Context assigned:', contextInfo);
