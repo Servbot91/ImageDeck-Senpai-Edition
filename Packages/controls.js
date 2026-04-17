@@ -581,8 +581,8 @@ export function setupEventHandlers(container, callbacks = {}) {
         }, 0);
     }
 
-    // Add keyboard controls with proper reference storage
-    eventManager.add(document, 'keydown', keyboardHandler, true);
+	const keyboardHandlerWithActions = (e) => handleKeyboard(e, callbacks);
+	eventManager.add(document, 'keydown', keyboardHandlerWithActions, true);
     
     setupSwipeGestures(container, eventManager);
     setupMouseWheel(container, eventManager);
@@ -739,7 +739,9 @@ export function setDeckActive(active) {
     isDeckActive = active;
 }
 
-function handleKeyboard(e) {
+function handleKeyboard(e, actions = {}) {
+    const { closeDeck, startAutoPlay, stopAutoPlay } = actions;
+    
     if (!isDeckActive) return;
     
     // Check if we're in a modal input field
@@ -772,7 +774,7 @@ function handleKeyboard(e) {
             const modal = document.querySelector('.image-deck-metadata-modal');
             if (modal && modal.classList.contains('active')) {
                 closeMetadataModal();
-            } else {
+            } else if (closeDeck) {
                 closeDeck();
             }
             break;
@@ -781,9 +783,9 @@ function handleKeyboard(e) {
             e.stopPropagation();
             const playBtn = document.querySelector('[data-action="play"]');
             if (playBtn && playBtn.classList.contains('active')) {
-                stopAutoPlay();
+                if (stopAutoPlay) stopAutoPlay();
             } else {
-                startAutoPlay();
+                if (startAutoPlay) startAutoPlay();
             }
             break;
         case 'i':
