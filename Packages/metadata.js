@@ -312,9 +312,10 @@ export function closeMetadataModal() {
         modal.classList.remove('active');
     }
     currentMetadata = null;
-
-    updateControlVisibility(true);
+    
+    // Don't call updateControlVisibility here - let the caller handle it
 }
+
 function populateImageMetadataModal(metadata) {
     const body = document.querySelector('.image-deck-metadata-body');
     if (!body) return;
