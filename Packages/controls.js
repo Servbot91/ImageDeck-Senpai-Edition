@@ -687,6 +687,14 @@ function handleKeyboard(e, actions = {}) {
     const { closeDeck, startAutoPlay, stopAutoPlay } = actions;
     
     if (!isDeckActive) return;
+	const formElements = ['INPUT', 'TEXTAREA', 'SELECT'];
+    if (formElements.includes(e.target.tagName)) {
+        if (e.key === ' ' && e.target.tagName === 'INPUT') {
+            e.stopPropagation();
+            return;
+        }
+        return;
+    }
     
     const inModalInput = (e.target.closest('.gallery-tag-filter-modal') || e.target.closest('.image-deck-metadata-modal')) && 
                         (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA');

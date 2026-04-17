@@ -123,11 +123,13 @@ export function initSwiper(container, images, pluginConfig, updateUICallback, sa
         },
         ...effectOptions,
         on: {
-            click(s, event) {
-                const zoomContainer = event.target.closest('.swiper-zoom-container[data-type="gallery"]');
-                if (zoomContainer?.dataset.url) {
-                    window.open(zoomContainer.dataset.url, '_blank');
-                }
+			click(s, event) {
+				// Check if the click target is within an input or textarea
+				const interactiveElements = ['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'];
+				if (interactiveElements.includes(event.target.tagName)) {
+					// Allow normal behavior for form elements
+					return;
+				}
             },
             slideChange() {
                 updateUICallback?.(container);
