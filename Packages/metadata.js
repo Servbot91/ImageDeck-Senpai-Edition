@@ -60,6 +60,7 @@ export async function openMetadataModal() {
     }
 }
 
+
 function populateGalleryMetadataModal(metadata) {
     const body = document.querySelector('.image-deck-metadata-body');
     if (!body) return;
@@ -305,8 +306,9 @@ export function closeMetadataModal() {
         modal.classList.remove('active');
     }
     currentMetadata = null;
-}
 
+    updateControlVisibility(true);
+}
 function populateImageMetadataModal(metadata) {
     const body = document.querySelector('.image-deck-metadata-body');
     if (!body) return;

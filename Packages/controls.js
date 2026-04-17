@@ -92,18 +92,21 @@ function updateControlVisibility(isVisible = true) {
     const speedIndicator = container.querySelector('.image-deck-speed');
     
     const opacity = isVisible ? '1' : '0';
-    const display = isVisible ? 'flex' : 'none'; // or keep display: flex and only change opacity
+    const display = isVisible ? 'flex' : 'none';
     
     if (topBar) {
         topBar.style.opacity = opacity;
+        topBar.style.pointerEvents = isVisible ? 'auto' : 'none';
     }
     
     if (controlsWrapper) {
         controlsWrapper.style.opacity = opacity;
+        controlsWrapper.style.pointerEvents = isVisible ? 'auto' : 'none';
     }
     
     if (speedIndicator) {
         speedIndicator.style.opacity = opacity;
+        speedIndicator.style.pointerEvents = isVisible ? 'auto' : 'none';
     }
 }
 
@@ -449,10 +452,14 @@ export function setupEventHandlers(container, callbacks = {}) {
         eventManager.add(fullscreenBtn, 'click', toggleFullscreen);
     }
 
-    // Metadata modal close button
+    // Metadata modal close button - THIS IS THE KEY PART
     const metadataCloseBtn = container.querySelector('.image-deck-metadata-close');
     if (metadataCloseBtn) {
-        eventManager.add(metadataCloseBtn, 'click', closeMetadataModal);
+        eventManager.add(metadataCloseBtn, 'click', () => {
+            closeMetadataModal();
+            // Show controls when metadata modal is closed
+            updateControlVisibility(true);
+        });
     }
 	
     const galleryFilterBtn = container.querySelector('.gallery-filter-btn');
@@ -504,6 +511,8 @@ export function setupEventHandlers(container, callbacks = {}) {
                     }
                     break;
                 case 'info':
+                    // Hide all controls when info button is clicked
+                    updateControlVisibility(false);
                     openMetadataModal();
                     break;
                 case 'zoom-in':
@@ -565,7 +574,6 @@ export function setupEventHandlers(container, callbacks = {}) {
     setupSwipeGestures(container, eventManager);
     setupMouseWheel(container, eventManager);
 }
-
 
 function setupSwipeGestures(container, eventManager) {
     let touchStartY = 0;
@@ -773,6 +781,8 @@ function handleKeyboard(e) {
             if (metadataModal && metadataModal.classList.contains('active')) {
                 closeMetadataModal();
             } else {
+                // Hide controls when opening metadata modal via keyboard
+                updateControlVisibility(false);
                 openMetadataModal();
             }
             break;
