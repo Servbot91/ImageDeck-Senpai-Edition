@@ -480,7 +480,7 @@ export async function applyGalleryTagFilter(includedTags, excludedTags, included
         detail: { includedTags, excludedTags, includedPerformers, excludedPerformers } 
     }));
     
-    // Immediately trigger content refresh for ALL contexts
+    // Completely refresh everything, not just content
     setTimeout(() => {
         window.dispatchEvent(new CustomEvent('updateDeckContent', { 
             detail: { includedTags, excludedTags, includedPerformers, excludedPerformers } 

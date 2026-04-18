@@ -419,52 +419,52 @@ export async function openDeck(targetImageId = null) {
         }
         
         // Handle performer contexts specifically
-		const path = window.location.pathname;
-		const performerMatch = path.match(/^\/performers\/(\d+)(?:\/(galleries|images))?/);
-		if (performerMatch) {
-			const [, performerId, viewType] = performerMatch;
-			
-			// Determine mode based on URL, stored preference, or default
-			let type = 'galleries';
-			if (viewType === 'images' || storedMode === 'image') {
-				type = 'images';
-			} else if (viewType === 'galleries' || storedMode === 'gallery') {
-				type = 'galleries';
-			}
-			
-			// Preserve existing filters and ensure performer filter is included
-			const existingFilters = detectedContext?.filter || {};
-			if (!existingFilters.performers) {
-				existingFilters.performers = {
-					value: [performerId],
-					modifier: "INCLUDES"
-				};
-			}
-			
-			// Ensure default sorting if not specified
-			if (!existingFilters.sortBy) existingFilters.sortBy = 'created_at';
-			if (!existingFilters.sortDir) existingFilters.sortDir = 'desc';
-			
-			detectedContext = {
-				type: type,
-				id: performerId,
-				performerId: performerId,
-				isPerformerContext: true,
-				filter: existingFilters
-			};
-		}
+        const path = window.location.pathname;
+        const performerMatch = path.match(/^\/performers\/(\d+)(?:\/(galleries|images))?/);
+        if (performerMatch) {
+            const [, performerId, viewType] = performerMatch;
+            
+            // Determine mode based on URL, stored preference, or default
+            let type = 'galleries';
+            if (viewType === 'images' || storedMode === 'image') {
+                type = 'images';
+            } else if (viewType === 'galleries' || storedMode === 'gallery') {
+                type = 'galleries';
+            }
+            
+            // Preserve existing filters and ensure performer filter is included
+            const existingFilters = detectedContext?.filter || {};
+            if (!existingFilters.performers) {
+                existingFilters.performers = {
+                    value: [performerId],
+                    modifier: "INCLUDES"
+                };
+            }
+            
+            // Ensure default sorting if not specified
+            if (!existingFilters.sortBy) existingFilters.sortBy = 'created_at';
+            if (!existingFilters.sortDir) existingFilters.sortDir = 'desc';
+            
+            detectedContext = {
+                type: type,
+                id: performerId,
+                performerId: performerId,
+                isPerformerContext: true,
+                filter: existingFilters
+            };
+        }
 
-		if (!detectedContext) {
-			console.log('[Image Deck] No context detected, defaulting to galleries');
-			detectedContext = {
-				type: 'galleries',
-				isGalleryListing: true,
-				filter: {
-					sortBy: 'created_at',
-					sortDir: 'desc'  
-				}
-			};
-}
+        if (!detectedContext) {
+            console.log('[Image Deck] No context detected, defaulting to galleries');
+            detectedContext = {
+                type: 'galleries',
+                isGalleryListing: true,
+                filter: {
+                    sortBy: 'created_at',
+                    sortDir: 'desc'  
+                }
+            };
+        }
 
         // Handle tag filters from sessionStorage
         const tagFilter = sessionStorage.getItem('galleryTagFilter');
@@ -614,17 +614,46 @@ export async function openDeck(targetImageId = null) {
         if (currentSwiper) {
             currentSwiper.on('zoomChange', (swiper, scale) => {
                 const topBar = container.querySelector('.image-deck-topbar');
-                const controls = container.querySelector('.image-deck-controls');
+                const controlsWrapper = container.querySelector('.image-deck-controls-wrapper');
                 const speedIndicator = container.querySelector('.image-deck-speed');
+                const filterDisplay = container.querySelector('.image-deck-current-filters');
                 
                 if (scale > 1) {
-                    if (topBar) topBar.style.opacity = '0';
-                    if (controls) controls.style.opacity = '0';
-                    if (speedIndicator) speedIndicator.style.opacity = '0';
+                    // Hide all controls when zoomed in
+                    if (topBar) {
+                        topBar.style.opacity = '0';
+                        topBar.style.pointerEvents = 'none';
+                    }
+                    if (controlsWrapper) {
+                        controlsWrapper.style.opacity = '0';
+                        controlsWrapper.style.pointerEvents = 'none';
+                    }
+                    if (speedIndicator) {
+                        speedIndicator.style.opacity = '0';
+                        speedIndicator.style.pointerEvents = 'none';
+                    }
+                    if (filterDisplay) {
+                        filterDisplay.style.opacity = '0';
+                        filterDisplay.style.pointerEvents = 'none';
+                    }
                 } else {
-                    if (topBar) topBar.style.opacity = '1';
-                    if (controls) controls.style.opacity = '1';
-                    if (speedIndicator) speedIndicator.style.opacity = '1';
+                    // Show all controls when zoomed out
+                    if (topBar) {
+                        topBar.style.opacity = '1';
+                        topBar.style.pointerEvents = 'auto';
+                    }
+                    if (controlsWrapper) {
+                        controlsWrapper.style.opacity = '1';
+                        controlsWrapper.style.pointerEvents = 'auto';
+                    }
+                    if (speedIndicator) {
+                        speedIndicator.style.opacity = '1';
+                        speedIndicator.style.pointerEvents = 'auto';
+                    }
+                    if (filterDisplay) {
+                        filterDisplay.style.opacity = '1';
+                        filterDisplay.style.pointerEvents = 'auto';
+                    }
                 }
             });
         }
@@ -659,14 +688,70 @@ export async function openDeck(targetImageId = null) {
             });
         });
         
-		const filterUpdateListener = (e) => {
-			console.log('[Image Deck] Received updateDeckContent event:', e.detail);
-			setTimeout(() => {
-				forceRefreshGalleryCovers();
-			}, 100); 
-		};
+        const filterUpdateListener = (e) => {
+            console.log('[Image Deck] Received updateDeckContent event:', e.detail);
+            setTimeout(async () => {
+                // Do a complete refresh as if opening for first time
+                await forceRefreshGalleryCovers();
+                
+                // Update UI and reinitialize controls
+                const container = document.querySelector('.image-deck-container');
+                if (container) {
+                    updateUI(container);
+                    await updateFilterDisplayInUI();
+                    
+                    // Reattach zoom change listener for proper control visibility
+                    if (currentSwiper) {
+                        currentSwiper.on('zoomChange', (swiper, scale) => {
+                            const topBar = container.querySelector('.image-deck-topbar');
+                            const controlsWrapper = container.querySelector('.image-deck-controls-wrapper');
+                            const speedIndicator = container.querySelector('.image-deck-speed');
+                            const filterDisplay = container.querySelector('.image-deck-current-filters');
+                            
+                            if (scale > 1) {
+                                // Hide all controls when zoomed in
+                                if (topBar) {
+                                    topBar.style.opacity = '0';
+                                    topBar.style.pointerEvents = 'none';
+                                }
+                                if (controlsWrapper) {
+                                    controlsWrapper.style.opacity = '0';
+                                    controlsWrapper.style.pointerEvents = 'none';
+                                }
+                                if (speedIndicator) {
+                                    speedIndicator.style.opacity = '0';
+                                    speedIndicator.style.pointerEvents = 'none';
+                                }
+                                if (filterDisplay) {
+                                    filterDisplay.style.opacity = '0';
+                                    filterDisplay.style.pointerEvents = 'none';
+                                }
+                            } else {
+                                // Show all controls when zoomed out
+                                if (topBar) {
+                                    topBar.style.opacity = '1';
+                                    topBar.style.pointerEvents = 'auto';
+                                }
+                                if (controlsWrapper) {
+                                    controlsWrapper.style.opacity = '1';
+                                    controlsWrapper.style.pointerEvents = 'auto';
+                                }
+                                if (speedIndicator) {
+                                    speedIndicator.style.opacity = '1';
+                                    speedIndicator.style.pointerEvents = 'auto';
+                                }
+                                if (filterDisplay) {
+                                    filterDisplay.style.opacity = '1';
+                                    filterDisplay.style.pointerEvents = 'auto';
+                                }
+                            }
+                        });
+                    }
+                }
+            }, 100); 
+        };
 
-		window.addEventListener('updateDeckContent', filterUpdateListener);
+        window.addEventListener('updateDeckContent', filterUpdateListener);
         cleanupFunctions.push(() => {
             window.removeEventListener('updateDeckContent', filterUpdateListener);
         });
@@ -678,6 +763,8 @@ export async function openDeck(targetImageId = null) {
         alert('Error opening Image Deck: ' + error.message);
     }
 }
+
+
 async function getTagNames(tagIds) {
     if (!tagIds || tagIds.length === 0) return {};
     
@@ -894,42 +981,18 @@ async function updateFilterDisplayInUI() {
         filterDisplay.style.display = 'flex'; // Make sure it's visible
         container.insertBefore(filterDisplay, container.querySelector('.image-deck-progress'));
         
-        // Add event listeners for removing filters
+        // COMPLETELY REINITIALIZE CONTROLS - THIS IS THE KEY CHANGE
         setTimeout(() => {
-            filterDisplay.querySelectorAll('.remove-filter-tag').forEach(button => {
-                button.addEventListener('click', async (e) => {
-                    e.stopPropagation();
-                    const tagId = button.dataset.tagId;
-                    const performerId = button.dataset.performerId;
-                    const currentTags = getCurrentFilterTags();
-                    
-                    // Update the filter arrays
-                    let newIncludedTags = currentTags.includedTags.filter(id => id !== tagId);
-                    let newExcludedTags = currentTags.excludedTags.filter(id => id !== tagId);
-                    let newIncludedPerformers = currentTags.includedPerformers.filter(id => id !== performerId);
-                    let newExcludedPerformers = currentTags.excludedPerformers.filter(id => id !== performerId);
-                    
-                    // Update session storage
-                    if (newIncludedTags.length > 0 || newExcludedTags.length > 0 || 
-                        newIncludedPerformers.length > 0 || newExcludedPerformers.length > 0) {
-                        const filterObj = {
-                            includedTags: newIncludedTags,
-                            excludedTags: newExcludedTags,
-                            includedPerformers: newIncludedPerformers,
-                            excludedPerformers: newExcludedPerformers
-                        };
-                        sessionStorage.setItem('galleryTagFilter', JSON.stringify(filterObj));
-                    } else {
-                        sessionStorage.removeItem('galleryTagFilter');
-                    }
-                    
-                    // Trigger filter change event
-                    window.dispatchEvent(new CustomEvent('galleryTagFilterChanged'));
-                    
-                    // Refresh the deck content
-                    setTimeout(() => {
-                        forceRefreshGalleryCovers();
-                    }, 100);
+            import('./controls.js').then(module => {
+                // Clean up existing event handlers first
+                module.cleanupEventHandlers();
+                
+                // Re-setup event handlers with fresh context
+                module.setupEventHandlers(container, {
+                    closeDeck,
+                    startAutoPlay,
+                    stopAutoPlay,
+                    loadNextChunk
                 });
             });
         }, 0);

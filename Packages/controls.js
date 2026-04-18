@@ -651,35 +651,39 @@ export function setupEventHandlers(container, callbacks = {}) {
     }); 
 
     // Fix the remove tag buttons event listeners
-    const removeTagButtons = container.querySelectorAll('.remove-filter-tag');
-    removeTagButtons.forEach(button => {
-        eventManager.add(button, 'click', async (e) => {
-            e.stopPropagation();
-            const tagId = button.dataset.tagId;
-            const performerId = button.dataset.performerId; // Add this
-            const currentTags = getCurrentFilterTags();
-            
-            let newIncludedTags = currentTags.includedTags.filter(id => id !== tagId);
-            let newExcludedTags = currentTags.excludedTags.filter(id => id !== tagId);
-            let newIncludedPerformers = currentTags.includedPerformers.filter(id => id !== performerId);
-            let newExcludedPerformers = currentTags.excludedPerformers.filter(id => id !== performerId);
-            
-            if (newIncludedTags.length > 0 || newExcludedTags.length > 0 || 
-                newIncludedPerformers.length > 0 || newExcludedPerformers.length > 0) {
-                const filterObj = {
-                    includedTags: newIncludedTags,
-                    excludedTags: newExcludedTags,
-                    includedPerformers: newIncludedPerformers,
-                    excludedPerformers: newExcludedPerformers
-                };
-                sessionStorage.setItem('galleryTagFilter', JSON.stringify(filterObj));
-            } else {
-                sessionStorage.removeItem('galleryTagFilter');
-            }
-            
-            window.dispatchEvent(new CustomEvent('galleryTagFilterChanged'));
-        });
-    });
+		const removeTagButtons = container.querySelectorAll('.remove-filter-tag');
+		removeTagButtons.forEach(button => {
+			// Clone to remove any existing handlers
+			const newButton = button.cloneNode(true);
+			button.parentNode.replaceChild(newButton, button);
+			
+			eventManager.add(newButton, 'click', async (e) => {
+				e.stopPropagation();
+				const tagId = newButton.dataset.tagId;
+				const performerId = newButton.dataset.performerId; // Add this
+				const currentTags = getCurrentFilterTags();
+				
+				let newIncludedTags = currentTags.includedTags.filter(id => id !== tagId);
+				let newExcludedTags = currentTags.excludedTags.filter(id => id !== tagId);
+				let newIncludedPerformers = currentTags.includedPerformers.filter(id => id !== performerId);
+				let newExcludedPerformers = currentTags.excludedPerformers.filter(id => id !== performerId);
+				
+				if (newIncludedTags.length > 0 || newExcludedTags.length > 0 || 
+					newIncludedPerformers.length > 0 || newExcludedPerformers.length > 0) {
+					const filterObj = {
+						includedTags: newIncludedTags,
+						excludedTags: newExcludedTags,
+						includedPerformers: newIncludedPerformers,
+						excludedPerformers: newExcludedPerformers
+					};
+					sessionStorage.setItem('galleryTagFilter', JSON.stringify(filterObj));
+				} else {
+					sessionStorage.removeItem('galleryTagFilter');
+				}
+				
+				window.dispatchEvent(new CustomEvent('galleryTagFilterChanged'));
+			});
+		});
 
     const swiper = state.getSwiper();
     if (swiper) {
