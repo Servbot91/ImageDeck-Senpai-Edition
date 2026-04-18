@@ -1,163 +1,436 @@
-// Add this to the detectContext function around line 40, after the /images page handling
+import { parseUrlFilters } from './filters.js';
+
+function getCurrentFilterTags() {
+    const tagFilter = sessionStorage.getItem('galleryTagFilter');
+    if (tagFilter) {
+        try {
+            const filterObj = JSON.parse(tagFilter);
+            return {
+                included: filterObj.included || [],
+                excluded: filterObj.excluded || []
+            };
+        } catch (e) {
+            console.error('Error parsing tag filter:', e);
+            return { included: [], excluded: [] };
+        }
+    }
+    return { included: [], excluded: [] };
+}
+
 export function detectContext() {
     const path = window.location.pathname;
     const hash = window.location.hash;
     const search = window.location.search;
-
-    // 1. Check for individual image page
-    const imageIdMatch = path.match(/^\/images\/(\d+)$/);
-    if (imageIdMatch) {
-        return { type: 'images', id: imageIdMatch[1], hash, isSingleImage: true };
+    
+    // Parse URL filters first
+    let filters = parseUrlFilters(search);
+    
+    // Check if we're in image mode
+    const storedMode = sessionStorage.getItem('imageDeckMode');
+    const isImageMode = storedMode === 'image';
+    
+    // Handle main page with filters
+    if (path === '/') {
+        const tagFilter = sessionStorage.getItem('galleryTagFilter');
+        
+        if (tagFilter) {
+            try {
+                const filterObj = JSON.parse(tagFilter);
+                
+                // Apply tag filters
+                if ((filterObj.includedTags && filterObj.includedTags.length > 0) || 
+                    (filterObj.excludedTags && filterObj.excludedTags.length > 0)) {
+                    if (!filters) filters = {};
+                    if (filterObj.includedTags && filterObj.includedTags.length > 0) {
+                        filters.tags = {
+                            value: filterObj.includedTags,
+                            modifier: "INCLUDES"
+                        };
+                    }
+                    if (filterObj.excludedTags && filterObj.excludedTags.length > 0) {
+                        if (filters.tags) {
+                            filters.tags.excluded = filterObj.excludedTags;
+                        } else {
+                            filters.tags = {
+                                value: [],
+                                modifier: "INCLUDES",
+                                excluded: filterObj.excludedTags
+                            };
+                        }
+                    }
+                }
+                
+                // Apply performer filters
+                if ((filterObj.includedPerformers && filterObj.includedPerformers.length > 0) || 
+                    (filterObj.excludedPerformers && filterObj.excludedPerformers.length > 0)) {
+                    if (!filters) filters = {};
+                    if (filterObj.includedPerformers && filterObj.includedPerformers.length > 0) {
+                        filters.performers = {
+                            value: filterObj.includedPerformers,
+                            modifier: "INCLUDES"
+                        };
+                    }
+                    if (filterObj.excludedPerformers && filterObj.excludedPerformers.length > 0) {
+                        if (filters.performers) {
+                            filters.performers.excluded = filterObj.excludedPerformers;
+                        } else {
+                            filters.performers = {
+                                value: [],
+                                modifier: "INCLUDES",
+                                excluded: filterObj.excludedPerformers
+                            };
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('[Image Deck] Error parsing tag filter:', e);
+            }
+        }
+        
+        // Use 'images' type when in image mode, otherwise 'galleries'
+        // DEFAULT SORT: newest first (desc)
+        if (!filters) filters = {};
+        if (!filters.sortBy) filters.sortBy = 'created_at';
+        if (!filters.sortDir) filters.sortDir = 'desc';
+        
+        return { 
+            type: isImageMode ? 'images' : 'galleries', 
+            isGalleryListing: !isImageMode, 
+            isGeneralListing: isImageMode,
+            filter: filters, 
+            hash 
+        };
     }
 
-    // 2. Check for Gallery Contexts
-	if (path.startsWith('/galleries')) {
-		const galleryIdMatch = path.match(/^\/galleries\/(\d+)/);
-		const params = new URLSearchParams(search);
-		
-		if (galleryIdMatch) {
-			const filter = parseUrlFilters(search);
-			// For single gallery views, if no sort is specified, default to title asc
-			if (!params.get('sortby') && !params.get('sortdir')) {
-				filter.sortBy = 'title';
-				filter.sortDir = 'asc';
-			}
-			return { type: 'galleries', id: galleryIdMatch[1], hash, isSingleGallery: true, filter };
-		} else {
-			const filters = parseUrlFilters(search);
-			return { type: 'galleries', isGalleryListing: true, filter: filters, hash };
-		}
-	}
+    // Handle galleries pages
+    if (path.startsWith('/galleries')) {
+        const galleryIdMatch = path.match(/^\/galleries\/(\d+)/);
+        
+        if (galleryIdMatch) {
+            let singleGalleryFilters = parseUrlFilters(search);
+            // Default sorting for single gallery
+            if (!new URLSearchParams(search).get('sortby') && !new URLSearchParams(search).get('sortdir')) {
+                singleGalleryFilters.sortBy = 'title';
+                singleGalleryFilters.sortDir = 'desc';
+            }
+            return { type: 'galleries', id: galleryIdMatch[1], hash, isSingleGallery: true, filter: singleGalleryFilters };
+        } else {
+            // Gallery listing page
+            let galleryFilters = parseUrlFilters(search);
+            
+            // DEFAULT SORT: newest first (desc)
+            if (!galleryFilters) galleryFilters = {};
+            if (!galleryFilters.sortBy) galleryFilters.sortBy = 'created_at';
+            if (!galleryFilters.sortDir) galleryFilters.sortDir = 'desc';
+            
+            const tagFilter = sessionStorage.getItem('galleryTagFilter');
+            if (tagFilter) {
+                try {
+                    const filterObj = JSON.parse(tagFilter);
+                    
+                    // Handle tag filters
+                    if ((filterObj.includedTags && filterObj.includedTags.length > 0) || 
+                        (filterObj.excludedTags && filterObj.excludedTags.length > 0)) {
+                        if (!galleryFilters) {
+                            galleryFilters = {};
+                        }
+                        if (filterObj.includedTags && filterObj.includedTags.length > 0) {
+                            galleryFilters.tags = {
+                                value: filterObj.includedTags,
+                                modifier: "INCLUDES"
+                            };
+                        }
+                        if (filterObj.excludedTags && filterObj.excludedTags.length > 0) {
+                            if (galleryFilters.tags) {
+                                galleryFilters.tags.excluded = filterObj.excludedTags;
+                            } else {
+                                galleryFilters.tags = {
+                                    value: [],
+                                    modifier: "INCLUDES",
+                                    excluded: filterObj.excludedTags
+                                };
+                            }
+                        }
+                    }
+                    
+                    // Handle performer filters
+                    if ((filterObj.includedPerformers && filterObj.includedPerformers.length > 0) || 
+                        (filterObj.excludedPerformers && filterObj.excludedPerformers.length > 0)) {
+                        if (!galleryFilters) {
+                            galleryFilters = {};
+                        }
+                        if (filterObj.includedPerformers && filterObj.includedPerformers.length > 0) {
+                            galleryFilters.performers = {
+                                value: filterObj.includedPerformers,
+                                modifier: "INCLUDES"
+                            };
+                        }
+                        if (filterObj.excludedPerformers && filterObj.excludedPerformers.length > 0) {
+                            if (galleryFilters.performers) {
+                                galleryFilters.performers.excluded = filterObj.excludedPerformers;
+                            } else {
+                                galleryFilters.performers = {
+                                    value: [],
+                                    modifier: "INCLUDES",
+                                    excluded: filterObj.excludedPerformers
+                                };
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error parsing tag filter:', e);
+                }
+            }
+            
+            return { type: 'galleries', isGalleryListing: true, filter: galleryFilters, hash };
+        }
+    }
 
-    // 3. Handle /images page (with OR without search params)
+    // Handle images pages - THIS IS THE KEY PART THAT WAS MISSING PROPER FILTER HANDLING
     if (path.startsWith('/images')) {
-        const filters = parseUrlFilters(search);
+        let imageFilters = parseUrlFilters(search);
+        // DEFAULT SORT: newest first (desc)
+        if (!imageFilters) imageFilters = {};
+        if (!imageFilters.sortBy) imageFilters.sortBy = 'created_at';
+        if (!imageFilters.sortDir) imageFilters.sortDir = 'desc';
+        
+        // ADD FILTER HANDLING FOR IMAGES TOO!
+        const tagFilter = sessionStorage.getItem('galleryTagFilter');
+        if (tagFilter) {
+            try {
+                const filterObj = JSON.parse(tagFilter);
+                
+                // Handle tag filters for images
+                if ((filterObj.includedTags && filterObj.includedTags.length > 0) || 
+                    (filterObj.excludedTags && filterObj.excludedTags.length > 0)) {
+                    if (!imageFilters) {
+                        imageFilters = {};
+                    }
+                    if (filterObj.includedTags && filterObj.includedTags.length > 0) {
+                        imageFilters.tags = {
+                            value: filterObj.includedTags,
+                            modifier: "INCLUDES"
+                        };
+                    }
+                    if (filterObj.excludedTags && filterObj.excludedTags.length > 0) {
+                        if (imageFilters.tags) {
+                            imageFilters.tags.excluded = filterObj.excludedTags;
+                        } else {
+                            imageFilters.tags = {
+                                value: [],
+                                modifier: "INCLUDES",
+                                excluded: filterObj.excludedTags
+                            };
+                        }
+                    }
+                }
+                
+                // Handle performer filters for images
+                if ((filterObj.includedPerformers && filterObj.includedPerformers.length > 0) || 
+                    (filterObj.excludedPerformers && filterObj.excludedPerformers.length > 0)) {
+                    if (!imageFilters) {
+                        imageFilters = {};
+                    }
+                    if (filterObj.includedPerformers && filterObj.includedPerformers.length > 0) {
+                        imageFilters.performers = {
+                            value: filterObj.includedPerformers,
+                            modifier: "INCLUDES"
+                        };
+                    }
+                    if (filterObj.excludedPerformers && filterObj.excludedPerformers.length > 0) {
+                        if (imageFilters.performers) {
+                            imageFilters.performers.excluded = filterObj.excludedPerformers;
+                        } else {
+                            imageFilters.performers = {
+                                value: [],
+                                modifier: "INCLUDES",
+                                excluded: filterObj.excludedPerformers
+                            };
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('Error parsing tag filter for images:', e);
+            }
+        }
+        
         return {
             type: 'images',
-            isFilteredView: !!search, // true if there are any search params
-            isGeneralListing: !search, // true if it's just the base /images page
-            filter: filters,
+            isFilteredView: !!search, 
+            isGeneralListing: !search, 
+            filter: imageFilters,
             hash: hash
         };
     }
 
-    // 4. Handle performer pages with gallery/image tabs
+    // Handle performer pages
     const performerMatch = path.match(/^\/performers\/(\d+)(?:\/(galleries|images))?/);
     if (performerMatch) {
-        const [, performerId, tab] = performerMatch;
-        const isImagesTab = tab === 'images' || hash.includes('images') || 
-                           document.querySelector('.nav-tabs .active')?.textContent?.includes('Images');
-        const isGalleriesTab = tab === 'galleries' || hash.includes('galleries') ||
-                              document.querySelector('.nav-tabs .active')?.textContent?.includes('Galleries');
-
-        // Default to images tab if no specific tab is indicated
-        const activeTab = isGalleriesTab ? 'galleries' : 'images';
-
-        // Create filter for performer
-        const filter = {
-            performers: { value: [performerId], modifier: "INCLUDES" }
+        const [, performerId, viewType] = performerMatch;
+        
+        // Determine if we should show galleries or images
+        let type = 'galleries';
+        if (viewType === 'images' || isImageMode) {
+            type = 'images';
+        } else if (viewType === 'galleries') {
+            type = 'galleries';
+        }
+        
+        // Build filter for this performer with DEFAULT SORT: newest first (desc)
+        let performerFilters = {
+            performers: { value: [performerId], modifier: "INCLUDES" },
+            sortBy: 'created_at',
+            sortDir: 'desc'
         };
-
-        // Parse sort parameters from URL
-        const params = new URLSearchParams(search);
-        if (params.has('sortby')) {
-            filter.sortBy = params.get('sortby');
+        
+        // Override with URL filters if present
+        const urlFilters = parseUrlFilters(search);
+        if (urlFilters) {
+            Object.assign(performerFilters, urlFilters);
         }
-        if (params.has('sortdir')) {
-            filter.sortDir = params.get('sortdir');
+        
+        // ALSO APPLY SESSION FILTERS TO PERFORMER CONTEXT
+        const tagFilter = sessionStorage.getItem('galleryTagFilter');
+        if (tagFilter) {
+            try {
+                const filterObj = JSON.parse(tagFilter);
+                
+                // Handle tag filters
+                if ((filterObj.includedTags && filterObj.includedTags.length > 0) || 
+                    (filterObj.excludedTags && filterObj.excludedTags.length > 0)) {
+                    if (filterObj.includedTags && filterObj.includedTags.length > 0) {
+                        performerFilters.tags = {
+                            value: filterObj.includedTags,
+                            modifier: "INCLUDES"
+                        };
+                    }
+                    if (filterObj.excludedTags && filterObj.excludedTags.length > 0) {
+                        if (performerFilters.tags) {
+                            performerFilters.tags.excluded = filterObj.excludedTags;
+                        } else {
+                            performerFilters.tags = {
+                                value: [],
+                                modifier: "INCLUDES",
+                                excluded: filterObj.excludedTags
+                            };
+                        }
+                    }
+                }
+                
+                // Handle performer filters (additional filtering)
+                if ((filterObj.includedPerformers && filterObj.includedPerformers.length > 0) || 
+                    (filterObj.excludedPerformers && filterObj.excludedPerformers.length > 0)) {
+                    if (filterObj.includedPerformers && filterObj.includedPerformers.length > 0) {
+                        if (performerFilters.performers) {
+                            // Combine with existing performer filter
+                            const combinedPerformers = [...new Set([...performerFilters.performers.value, ...filterObj.includedPerformers])];
+                            performerFilters.performers.value = combinedPerformers;
+                        } else {
+                            performerFilters.performers = {
+                                value: filterObj.includedPerformers,
+                                modifier: "INCLUDES"
+                            };
+                        }
+                    }
+                    if (filterObj.excludedPerformers && filterObj.excludedPerformers.length > 0) {
+                        if (performerFilters.performers) {
+                            performerFilters.performers.excluded = filterObj.excludedPerformers;
+                        } else {
+                            performerFilters.performers = {
+                                value: [performerId],
+                                modifier: "INCLUDES",
+                                excluded: filterObj.excludedPerformers
+                            };
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('Error parsing tag filter for performer:', e);
+            }
         }
-
-        return {
-            type: activeTab,
+        
+        return { 
+            type, 
             id: performerId,
-            filter: filter,
-            isPerformerContext: true,
             performerId: performerId,
-            hash: hash
+            isPerformerContext: true,
+            filter: performerFilters,
+            hash 
         };
     }
 
-    // 5. Handle path-based patterns (Performers, Tags, etc.) - existing code
-    const idMatch = path.match(/\/(\w+)\/(\d+)/);
-    if (idMatch) {
-        const [, type, id] = idMatch;
-        const isImagesTab = hash.includes('images') || 
-                           document.querySelector('.nav-tabs .active')?.textContent?.includes('Images');
-
-        if (isImagesTab || type === 'galleries') {
-            // Mapping common types to what the GraphQL image_filter expects
-            const filter = {};
-            if (type === 'performers') filter.performers = { value: [id], modifier: "INCLUDES" };
-            if (type === 'tags') filter.tags = { value: [id], modifier: "INCLUDES" };
-            if (type === 'studios') filter.studios = { value: [id], modifier: "INCLUDES" };
-
-            return { type, id, filter, hash };
-        }
-    }
-
-    // 6. Fallback: If we see images, at least try to paginate the general list
-    if (document.querySelectorAll('img[src*="/image/"]').length > 0) {
-        return {
-            type: 'images',
-            isGeneralListing: true,
-            filter: parseUrlFilters(search), // Still try to grab any sort/direction params
-            hash: hash
-        };
-    }
-
-    return null;
-}
-
-
-// Parse URL filter parameters
-function parseUrlFilters(search) {
-    const params = new URLSearchParams(search);
-    const cParam = params.get('c');
-    let parsedFilter = {};
-
-    if (cParam) {
+    // Fallback to visible images with DEFAULT SORT: newest first (desc)
+    let fallbackFilters = parseUrlFilters(search);
+    if (!fallbackFilters) fallbackFilters = {};
+    if (!fallbackFilters.sortBy) fallbackFilters.sortBy = 'created_at';
+    if (!fallbackFilters.sortDir) fallbackFilters.sortDir = 'desc';
+    
+    // ALSO APPLY FILTERS TO FALLBACK
+    const tagFilter = sessionStorage.getItem('galleryTagFilter');
+    if (tagFilter) {
         try {
-            // Decodes Stash's (key:value) format to JSON {key:value}
-            const jsonString = cParam
-                .replace(/\(/g, '{')
-                .replace(/\)/g, '}')
-                .replace(/"items":/g, '"value":');
-
-            const parsed = JSON.parse(jsonString);
-
-            // If we have a valid filter type (e.g., "performers")
-            if (parsed.type && parsed.value) {
-                parsedFilter[parsed.type] = {
-                    value: parsed.value.value ? parsed.value.value.map(i => i.id) : [],
-                    modifier: parsed.modifier || "INCLUDES"
-                };
+            const filterObj = JSON.parse(tagFilter);
+            
+            if ((filterObj.includedTags && filterObj.includedTags.length > 0) || 
+                (filterObj.excludedTags && filterObj.excludedTags.length > 0)) {
+                if (!fallbackFilters) fallbackFilters = {};
+                if (filterObj.includedTags && filterObj.includedTags.length > 0) {
+                    fallbackFilters.tags = {
+                        value: filterObj.includedTags,
+                        modifier: "INCLUDES"
+                    };
+                }
+                if (filterObj.excludedTags && filterObj.excludedTags.length > 0) {
+                    if (fallbackFilters.tags) {
+                        fallbackFilters.tags.excluded = filterObj.excludedTags;
+                    } else {
+                        fallbackFilters.tags = {
+                            value: [],
+                            modifier: "INCLUDES",
+                            excluded: filterObj.excludedTags
+                        };
+                    }
+                }
+            }
+            
+            if ((filterObj.includedPerformers && filterObj.includedPerformers.length > 0) || 
+                (filterObj.excludedPerformers && filterObj.excludedPerformers.length > 0)) {
+                if (!fallbackFilters) fallbackFilters = {};
+                if (filterObj.includedPerformers && filterObj.includedPerformers.length > 0) {
+                    fallbackFilters.performers = {
+                        value: filterObj.includedPerformers,
+                        modifier: "INCLUDES"
+                    };
+                }
+                if (filterObj.excludedPerformers && filterObj.excludedPerformers.length > 0) {
+                    if (fallbackFilters.performers) {
+                        fallbackFilters.performers.excluded = filterObj.excludedPerformers;
+                    } else {
+                        fallbackFilters.performers = {
+                            value: [],
+                            modifier: "INCLUDES",
+                            excluded: filterObj.excludedPerformers
+                        };
+                    }
+                }
             }
         } catch (e) {
-            console.error('[Image Deck] Filter parse error:', e);
+            console.error('Error parsing tag filter for fallback:', e);
         }
     }
-
-    // Handle sort direction - if not provided, assume ascending
-    let sortDir = 'asc'; // Default to ascending when not specified
-    if (params.has('sortdir')) {
-        sortDir = params.get('sortdir') || 'asc';
-    }
-
+    
     return {
-        ...parsedFilter,
-        sortBy: params.get('sortby') || 'created_at',
-        sortDir: sortDir,
-        perPage: parseInt(params.get('perPage')) || 40
+        type: 'images',
+        isGeneralListing: true,
+        filter: fallbackFilters,
+        hash: hash
     };
 }
 
-// Get visible images from current page
 export function getVisibleImages() {
     const images = [];
     const imageGrid = document.querySelector('.main-content, [role="main"]') || document.body;
     const imageElements = imageGrid.querySelectorAll('.image-card img, .grid-card img');
-
-    // Convert NodeList to Array to preserve order
     const imageArray = Array.from(imageElements);
 
     imageArray.forEach((img, index) => {
@@ -173,7 +446,6 @@ export function getVisibleImages() {
                 ? img.src.replace('/thumbnail/', '/image/')
                 : img.src;
 
-            // Find the preview button associated with this image
             const card = img.closest('.image-card, .grid-card');
             const previewButton = card?.querySelector('.preview-button');
 
@@ -183,7 +455,6 @@ export function getVisibleImages() {
                 paths: {
                     image: fullImageUrl
                 },
-                // Store reference to preview button
                 previewButton: previewButton
             });
         }
@@ -192,17 +463,14 @@ export function getVisibleImages() {
     return images;
 }
 
-// Get visible gallery covers from current page
 export function getVisibleGalleryCovers() {
     const galleries = [];
-    // Target only the main gallery grid
     const galleryGrid = document.querySelector('.main-content, [role="main"]') || document.body;
     const galleryElements = galleryGrid.querySelectorAll('.gallery-card, .card');
 
     galleryElements.forEach((card, index) => {
         const coverImg = card.querySelector('.gallery-cover img, img');
         if (coverImg && coverImg.src) {
-            // Extract gallery ID from the parent link or card
             let id = `gallery_${index}`;
             let url = null;
             const link = card.querySelector('a[href*="/galleries/"]');
@@ -220,7 +488,7 @@ export function getVisibleGalleryCovers() {
                 paths: {
                     image: coverImg.src
                 },
-                url: url // Add the gallery URL
+                url: url 
             });
         }
     });
@@ -229,27 +497,34 @@ export function getVisibleGalleryCovers() {
 }
 
 export async function fetchContextImages(context, page = 1, perPage = 50) {
-    const { type, id, filter, isSingleGallery, isGalleryListing } = context;
-    const isFetchingGalleries = isGalleryListing || (type === 'galleries' && !isSingleGallery);
+    const { type, id, filter, isSingleGallery, isGalleryListing, isGeneralListing } = context;
+    const isFetchingGalleries = isGalleryListing || 
+                               (type === 'galleries' && !isSingleGallery) ||
+                               (type === 'galleries' && isGeneralListing === false);
+    
+    const isFetchingImages = !isFetchingGalleries;
 
-    // 1. Determine Query - Add performer and tag data for filtering
     let query = '';
     if (isFetchingGalleries) {
-		query = `query FindGalleries($filter: FindFilterType!, $gallery_filter: GalleryFilterType) {
-			findGalleries(filter: $filter, gallery_filter: $gallery_filter) {
-				count
-				galleries {
-					id title image_count cover { paths { thumbnail image } }
-					performers {
-						id
-						name
-					}
-					tags {
-						id
-					}
-				}
-			}
-		}`;
+        query = `query FindGalleries($filter: FindFilterType!, $gallery_filter: GalleryFilterType) {
+            findGalleries(filter: $filter, gallery_filter: $gallery_filter) {
+                count
+                galleries {
+                    id title image_count cover { paths { thumbnail image } }
+                    performers {
+                        id
+                        name
+                    }
+                    tags {
+                        id
+                        name
+                    }
+                    date
+                    rating100
+                    organized
+                }
+            }
+        }`;
     } else {
         query = `query FindImages($filter: FindFilterType!, $image_filter: ImageFilterType) {
             findImages(filter: $filter, image_filter: $image_filter) {
@@ -258,74 +533,82 @@ export async function fetchContextImages(context, page = 1, perPage = 50) {
                     id title paths { thumbnail image }
                     performers {
                         id
+                        name
                     }
                     tags {
                         id
+                        name
                     }
+                    date
+                    rating100
+                    organized
                 }
             }
         }`;
     }
 
-    // 2. Build the active filter object and collect exclusions
+    // Build the filter object for GraphQL
     let activeFilter = {};
-    let exclusions = {}; // Store all exclusions by type
+    let exclusions = {}; 
     
+    // Handle single gallery context
     if (isSingleGallery && id) {
         activeFilter = { galleries: { value: [id], modifier: "INCLUDES" } };
-    } else if (filter) {
+    } 
+    // Handle filters from context (including tag filters from sessionStorage)
+    else if (filter) {
         if (isFetchingGalleries) {
-            // Gallery-specific allowed fields
             const galleryAllowedFields = [
-                'tags', 'performers', 'studios', 'markers', 'path', 
-                'rating100', 'organized', 'is_missing', 'image_count',
-                'date', 'url', 'photographer', 'code'
+                'tags', 'performers', 'studios', 'rating100', 'organized', 
+                'date', 'is_missing', 'image_count'
             ];
             
             galleryAllowedFields.forEach(field => {
                 if (filter[field]) {
-                    // Handle exclusions for any field type
+                    // Handle exclusions
                     if (filter[field].excluded && filter[field].excluded.length > 0) {
                         exclusions[field] = filter[field].excluded;
-                        // Still apply the main filter if there are positive includes
+                        // Include positive filters if they exist
                         if (filter[field].value && filter[field].value.length > 0) {
                             activeFilter[field] = {
                                 value: filter[field].value,
-                                modifier: filter[field].modifier
+                                modifier: filter[field].modifier || "INCLUDES"
                             };
                         }
-                    } else {
-                        // Handle other fields normally
+                    } 
+                    // Handle regular filters
+                    else if (filter[field].value && filter[field].value.length > 0) {
                         activeFilter[field] = {
                             value: filter[field].value,
-                            modifier: filter[field].modifier
+                            modifier: filter[field].modifier || "INCLUDES"
                         };
                     }
                 }
             });
         } else {
-            // Image-specific allowed fields
             const imageAllowedFields = [
-                'tags', 'performers', 'studios', 'markers', 'galleries', 
-                'path', 'rating100', 'organized', 'is_missing'
+                'tags', 'performers', 'studios', 'rating100', 'organized', 
+                'date', 'is_missing', 'galleries'
             ];
             
             imageAllowedFields.forEach(field => {
                 if (filter[field]) {
-                    // Handle exclusions for any field type
+                    // Handle exclusions
                     if (filter[field].excluded && filter[field].excluded.length > 0) {
                         exclusions[field] = filter[field].excluded;
-                        // Still apply the main filter if there are positive includes
+                        // Include positive filters if they exist
                         if (filter[field].value && filter[field].value.length > 0) {
                             activeFilter[field] = {
                                 value: filter[field].value,
-                                modifier: filter[field].modifier
+                                modifier: filter[field].modifier || "INCLUDES"
                             };
                         }
-                    } else {
+                    } 
+                    // Handle regular filters
+                    else if (filter[field].value && filter[field].value.length > 0) {
                         activeFilter[field] = {
                             value: filter[field].value,
-                            modifier: filter[field].modifier
+                            modifier: filter[field].modifier || "INCLUDES"
                         };
                     }
                 }
@@ -333,24 +616,35 @@ export async function fetchContextImages(context, page = 1, perPage = 50) {
         }
     }
 
-    // 3. Prepare GraphQL Variables
+    if (context.performerId) {
+        if (isFetchingGalleries) {
+            activeFilter.performers = {
+                value: [context.performerId],
+                modifier: "INCLUDES"
+            };
+        } else {
+            activeFilter.performers = {
+                value: [context.performerId],
+                modifier: "INCLUDES"
+            };
+        }
+    }
+
     const variables = {
         filter: { 
             per_page: perPage, 
             page: page, 
             sort: filter?.sortBy || "created_at", 
-            direction: (filter?.sortDir || "desc").toUpperCase() 
+            direction: (filter?.sortDir || "DESC").toUpperCase() 
         }
     };
 
-    // Assign to the correct GraphQL key based on context
     if (isFetchingGalleries) {
         variables.gallery_filter = activeFilter;
     } else {
         variables.image_filter = activeFilter;
     }
 
-    // 4. Execute Fetch
     try {
         const response = await fetch('/graphql', {
             method: 'POST',
@@ -372,76 +666,77 @@ export async function fetchContextImages(context, page = 1, perPage = 50) {
             let result = data?.data?.findGalleries;
             totalCount = result?.count || 0;
             
-            // Apply client-side filtering for all exclusions
+            // Apply client-side exclusion filtering if needed
             if (Object.keys(exclusions).length > 0 && result?.galleries) {
                 result.galleries = result.galleries.filter(item => {
-                    // Check each exclusion type
                     for (const [fieldType, excludedIds] of Object.entries(exclusions)) {
                         if (excludedIds.length > 0) {
-                            // Check if item has the field and any excluded values
                             if (item[fieldType] && item[fieldType].length > 0) {
-                                // Check if any item in the field is in the exclusion list
                                 const hasExcludedItem = item[fieldType].some(fieldItem => 
                                     excludedIds.includes(fieldItem.id)
                                 );
                                 
-                                // If we find any excluded item, exclude this gallery
                                 if (hasExcludedItem) {
                                     return false;
                                 }
                             }
                         }
                     }
-                    return true; // Include if no exclusions apply
+                    return true; 
                 });
-                
-                // Update count after filtering
+
                 totalCount = result.galleries.length;
             }
             
-			normalizedImages = (result?.galleries || []).map(gallery => ({
-				id: gallery.id,
-				title: gallery.title,
-				image_count: gallery.image_count,
-				performers: gallery.performers || [], // Add this line
-				isGallery: true,
-				type: 'gallery',
-				paths: { image: gallery.cover?.paths?.image || gallery.cover?.paths?.thumbnail || '' },
-				url: `/galleries/${gallery.id}`
-			}));
+            normalizedImages = (result?.galleries || []).map(gallery => ({
+                id: gallery.id,
+                title: gallery.title,
+                image_count: gallery.image_count,
+                performers: gallery.performers || [], 
+                tags: gallery.tags || [],
+                date: gallery.date,
+                rating100: gallery.rating100,
+                organized: gallery.organized,
+                isGallery: true,
+                type: 'gallery',
+                paths: { image: gallery.cover?.paths?.image || gallery.cover?.paths?.thumbnail || '' },
+                url: `/galleries/${gallery.id}`
+            }));
         } else {
             let result = data?.data?.findImages;
             totalCount = result?.count || 0;
             
-            // Apply client-side filtering for all exclusions
+            // Apply client-side exclusion filtering if needed
             if (Object.keys(exclusions).length > 0 && result?.images) {
                 result.images = result.images.filter(item => {
-                    // Check each exclusion type
                     for (const [fieldType, excludedIds] of Object.entries(exclusions)) {
                         if (excludedIds.length > 0) {
-                            // Check if item has the field and any excluded values
                             if (item[fieldType] && item[fieldType].length > 0) {
-                                // Check if any item in the field is in the exclusion list
                                 const hasExcludedItem = item[fieldType].some(fieldItem => 
                                     excludedIds.includes(fieldItem.id)
                                 );
                                 
-                                // If we find any excluded item, exclude this image
                                 if (hasExcludedItem) {
                                     return false;
                                 }
                             }
                         }
                     }
-                    return true; // Include if no exclusions apply
+                    return true; 
                 });
-                
-                // Update count after filtering
+
                 totalCount = result.images.length;
             }
             
             normalizedImages = (result?.images || []).map(img => ({
-                ...img,
+                id: img.id,
+                title: img.title,
+                performers: img.performers || [],
+                tags: img.tags || [],
+                date: img.date,
+                rating100: img.rating100,
+                organized: img.organized,
+                paths: img.paths,
                 isGallery: false,
                 type: 'image'
             }));

@@ -3,9 +3,10 @@ import { detectContext, fetchContextImages, getVisibleImages, getVisibleGalleryC
 import { setCurrentSwiper } from './metadata.js';
 import { initSwiper } from './swiper.js';
 import { isMobile } from './utils.js';
+import { GALLERY_ICON_SVG } from './constants.js';
+import { parseUrlFilters } from './filters.js'; 
 
-const GALLERY_ICON_SVG = '<svg fill="white" width="16" height="16" viewBox="0 0 36 36" style="vertical-align: middle;" xmlns="http://www.w3.org/2000/svg"><path d="M32,4H4A2,2,0,0,0,2,6V30a2,2,0,0,0,2,2H32a2,2,0,0,0,2-2V6A2,2,0,0,0,32,4ZM4,30V6H32V30Z"></path><path d="M8.92,14a3,3,0,1,0-3-3A3,3,0,0,0,8.92,14Zm0-4.6A1.6,1.6,0,1,1,7.33,11,1.6,1.6,0,0,1,8.92,9.41Z"></path><path d="M22.78,15.37l-5.4,5.4-4-4a1,1,0,0,0-1.41,0L5.92,22.9v2.83l6.79-6.79L16,22.18l-3.75,3.75H15l8.45-8.45L30,24V21.18l-5.81-5.81A1,1,0,0,0,22.78,15.37Z"></path></svg>';
-
+let chunkLoadTimeout = null;
 let pluginConfig = null;
 let currentSwiper = null;
 let currentImages = [];
@@ -18,75 +19,526 @@ let chunkSize = 50;
 let totalImageCount = 0;
 let totalPages = 0;
 let storedContextInfo = null;
+let performanceMonitor = null;
+let frameDropCount = 0;
+let cleanupFunctions = [];
 
+function startPerformanceMonitoring() {
+    if (!isMobile) return; 
+    
+    let lastTime = performance.now();
+    const fpsThreshold = 30; 
+    
+    performanceMonitor = setInterval(() => {
+        const currentTime = performance.now();
+        const deltaTime = currentTime - lastTime;
+        const fps = 1000 / deltaTime;
+        
+        if (fps < fpsThreshold) {
+            frameDropCount++;
+            if (frameDropCount > 5) {
+                reduceVisualEffects();
+                frameDropCount = 0;
+            }
+        } else {
+            frameDropCount = Math.max(0, frameDropCount - 0.1);
+        }
+        
+        lastTime = currentTime;
+    }, 1000);
+}
+
+function reduceVisualEffects() {
+    const styles = document.getElementById('image-deck-dynamic-styles');
+    if (styles) {
+        styles.textContent += `
+            .swiper-slide img {
+                filter: none !important; /* Remove glow effects */
+            }
+            .image-deck-ambient {
+                display: none !important; /* Hide ambient background */
+            }
+        `;
+    }
+}
+
+function stopPerformanceMonitoring() {
+    if (performanceMonitor) {
+        clearInterval(performanceMonitor);
+        performanceMonitor = null;
+    }
+}
+
+function getCurrentFilterTags() {
+    const tagFilter = sessionStorage.getItem('galleryTagFilter');
+    if (tagFilter) {
+        try {
+            const filterObj = JSON.parse(tagFilter);
+            return {
+                includedTags: filterObj.includedTags || filterObj.included || [],
+                excludedTags: filterObj.excludedTags || filterObj.excluded || [],
+                includedPerformers: filterObj.includedPerformers || [],
+                excludedPerformers: filterObj.excludedPerformers || []
+            };
+        } catch (e) {
+            console.error('[Image Deck] Error parsing tag filter:', e);
+            return { includedTags: [], excludedTags: [], includedPerformers: [], excludedPerformers: [] };
+        }
+    }
+    return { includedTags: [], excludedTags: [], includedPerformers: [], excludedPerformers: [] };
+}
+
+async function updateDeckContentWithFilter() {
+    console.log('[Image Deck] Updating content with filter');
+    
+    try {
+        currentChunkPage = 1;
+
+        const contextToUse = detectContext();
+        if (!contextToUse) {
+            console.error('[Image Deck] Could not detect context for fetching');
+            return;
+        }
+        
+        console.log('[Image Deck] Using context for filter update:', contextToUse);
+        const result = await fetchContextImages(contextToUse, 1, chunkSize);
+        
+        if (result && result.images) {
+            currentImages = result.images;
+            totalImageCount = result.totalCount || 0;
+            totalPages = result.totalPages || 1;
+			window.currentImages = currentImages;
+            if (currentSwiper && currentSwiper.virtual) {
+                const newSlides = currentImages.map(img => {
+                    return getSlideTemplateImpl(img, contextToUse, false);
+                });
+                currentSwiper.virtual.slides = newSlides;
+                currentSwiper.virtual.update(true);
+                currentSwiper.slideTo(0, 0, false); 
+                setTimeout(() => {
+                    if (currentSwiper) {
+                        currentSwiper.update();
+                    }
+                }, 50);
+                
+                setTimeout(() => {
+                    if (currentSwiper) {
+                        currentSwiper.update();
+                    }
+                }, 100);
+            }
+            
+            const container = document.querySelector('.image-deck-container');
+            if (container) {
+                updateUI(container);
+                await updateFilterDisplayInUI(); 
+            }
+            
+            console.log('[Image Deck] Content updated with filter, showing', currentImages.length, 'items');
+        }
+    } catch (error) {
+        console.error('[Image Deck] Error updating content with filter:', error);
+    }
+}
+
+async function restoreFilterDisplayOnOpen(container) {
+    const currentTags = getCurrentFilterTags();
+    
+    if (currentTags.includedTags.length > 0 || currentTags.excludedTags.length > 0 || 
+        currentTags.includedPerformers.length > 0 || currentTags.excludedPerformers.length > 0) {
+        const allTagIds = [...currentTags.includedTags, ...currentTags.excludedTags];
+        const allPerformerIds = [...currentTags.includedPerformers, ...currentTags.excludedPerformers];
+        const tagNames = await getTagNames(allTagIds);
+        const performerNames = await getPerformerNames(allPerformerIds);
+        
+        const filterDisplay = document.createElement('div');
+        filterDisplay.className = 'image-deck-current-filters';
+        filterDisplay.style.cssText = 'position: absolute; top: 60px; left: 20px; right: 20px; z-index: 10; display: flex; flex-wrap: wrap; gap: 5px;';
+        
+        let filterHtml = '<span style="color: #ccc; font-size: 12px; background: rgba(0,0,0,0.5); padding: 2px 8px; border-radius: 10px;">FILTERED BY:</span>';
+        
+        // Tags
+        filterHtml += currentTags.includedTags.map(tagId => {
+            const tagName = tagNames[tagId] || `Tag:${tagId}`;
+            return `
+                <span class="filter-tag-display" data-tag-id="${tagId}" style="color: white; font-size: 12px; background: rgba(46, 204, 113, 0.7); padding: 2px 8px; border-radius: 10px; display: flex; align-items: center;">
+                    ✅ ${tagName}
+                    <button class="remove-filter-tag" data-tag-id="${tagId}" style="background: none; border: none; color: white; margin-left: 5px; cursor: pointer; font-size: 14px;">×</button>
+                </span>`;
+        }).join('');
+        
+        filterHtml += currentTags.excludedTags.map(tagId => {
+            const tagName = tagNames[tagId] || `Tag:${tagId}`;
+            return `
+                <span class="filter-tag-display" data-tag-id="${tagId}" style="color: white; font-size: 12px; background: rgba(231, 76, 60, 0.7); padding: 2px 8px; border-radius: 10px; display: flex; align-items: center;">
+                    ❌ ${tagName}
+                    <button class="remove-filter-tag" data-tag-id="${tagId}" style="background: none; border: none; color: white; margin-left: 5px; cursor: pointer; font-size: 14px;">×</button>
+                </span>`;
+        }).join('');
+        
+        // Performers (pink)
+        filterHtml += currentTags.includedPerformers.map(performerId => {
+            const performerName = performerNames[performerId] || `Performer:${performerId}`;
+            return `
+                <span class="filter-tag-display" data-performer-id="${performerId}" style="color: white; font-size: 12px; background: rgba(233, 30, 99, 0.7); padding: 2px 8px; border-radius: 10px; display: flex; align-items: center;">
+                    ✅ ${performerName}
+                    <button class="remove-filter-tag" data-performer-id="${performerId}" style="background: none; border: none; color: white; margin-left: 5px; cursor: pointer; font-size: 14px;">×</button>
+                </span>`;
+        }).join('');
+        
+        filterHtml += currentTags.excludedPerformers.map(performerId => {
+            const performerName = performerNames[performerId] || `Performer:${performerId}`;
+            return `
+                <span class="filter-tag-display" data-performer-id="${performerId}" style="color: white; font-size: 12px; background: rgba(233, 30, 99, 0.7); padding: 2px 8px; border-radius: 10px; display: flex; align-items: center;">
+                    ❌ ${performerName}
+                    <button class="remove-filter-tag" data-performer-id="${performerId}" style="background: none; border: none; color: white; margin-left: 5px; cursor: pointer; font-size: 14px;">×</button>
+                </span>`;
+        }).join('');
+        
+        filterDisplay.innerHTML = filterHtml;
+        container.insertBefore(filterDisplay, container.querySelector('.image-deck-progress'));
+        
+        setTimeout(() => {
+            filterDisplay.querySelectorAll('.remove-filter-tag').forEach(button => {
+                button.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    const tagId = button.dataset.tagId;
+                    const performerId = button.dataset.performerId;
+                    const currentTags = getCurrentFilterTags();
+                    
+                    let newIncludedTags = currentTags.includedTags.filter(id => id !== tagId);
+                    let newExcludedTags = currentTags.excludedTags.filter(id => id !== tagId);
+                    let newIncludedPerformers = currentTags.includedPerformers.filter(id => id !== performerId);
+                    let newExcludedPerformers = currentTags.excludedPerformers.filter(id => id !== performerId);
+                    
+                    if (newIncludedTags.length > 0 || newExcludedTags.length > 0 || 
+                        newIncludedPerformers.length > 0 || newExcludedPerformers.length > 0) {
+                        const filterObj = {
+                            includedTags: newIncludedTags,
+                            excludedTags: newExcludedTags,
+                            includedPerformers: newIncludedPerformers,
+                            excludedPerformers: newExcludedPerformers
+                        };
+                        sessionStorage.setItem('galleryTagFilter', JSON.stringify(filterObj));
+                    } else {
+                        sessionStorage.removeItem('galleryTagFilter');
+                    }
+                    
+                    window.dispatchEvent(new CustomEvent('galleryTagFilterChanged'));
+                });
+            });
+        }, 0);
+    }
+}
+
+async function getPerformerNames(performerIds) {
+    if (!performerIds || performerIds.length === 0) return {};
+    
+    try {
+        const performerPromises = performerIds.map(async (performerId) => {
+            const query = `query FindPerformer($id: ID!) {
+                findPerformer(id: $id) {
+                    id
+                    name
+                }
+            }`;
+            
+            const response = await fetch('/graphql', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    query, 
+                    variables: { id: performerId } 
+                })
+            });
+            
+            const data = await response.json();
+            return data?.data?.findPerformer;
+        });
+        
+        const performerResults = await Promise.all(performerPromises);
+        const performerMap = {};
+        
+        performerResults.forEach(performer => {
+            if (performer) {
+                performerMap[performer.id] = performer.name;
+            }
+        });
+        
+        return performerMap;
+    } catch (error) {
+        console.error('[Image Deck] Error fetching performer names:', error);
+        return {};
+    }
+}
+
+
+async function forceRefreshGalleryCovers() {
+    console.log('[Image Deck] Force refreshing content');
+    
+    try {
+        // Always use the current context which includes GraphQL filters
+        const freshContext = detectContext();
+        
+        if (!freshContext) {
+            console.error('[Image Deck] Could not detect context for refresh');
+            return;
+        }
+        
+        currentChunkPage = 1;
+        
+        const result = await fetchContextImages(freshContext, 1, chunkSize);
+        console.log('[Image Deck] Fresh content result:', result);
+        
+        if (result && result.images) {
+            currentImages = result.images;
+            window.currentImages = currentImages;
+            totalImageCount = result.totalCount || 0;
+            totalPages = result.totalPages || 1;
+
+            if (currentSwiper) {
+                console.log('[Image Deck] Rebuilding Swiper with fresh content');
+                const container = document.querySelector('.image-deck-container');
+                if (container) {
+                    if (currentSwiper && typeof currentSwiper.destroy === 'function') {
+                        currentSwiper.destroy(true, true);
+                    }
+                    currentSwiper = null;
+                    const swiperEl = container.querySelector('.swiper');
+                    if (swiperEl) {
+                        const wrapper = swiperEl.querySelector('.swiper-wrapper');
+                        if (wrapper) {
+                            wrapper.innerHTML = '';
+                        }
+                    }
+                    currentSwiper = initSwiper(
+                        container, 
+                        currentImages, 
+                        pluginConfig, 
+                        () => {
+                            updateUI(container);
+                            checkAndLoadNextChunk(); 
+                        }, 
+                        savePosition, 
+                        freshContext
+                    );
+                    window.currentSwiperInstance = currentSwiper;
+                    setCurrentSwiper(currentSwiper);
+                    setTimeout(() => {
+                        if (currentSwiper) {
+                            currentSwiper.update();
+                            currentSwiper.slideTo(0, 0, false);
+                        }
+                    }, 50);
+                    setTimeout(() => {
+                        if (currentSwiper) {
+                            currentSwiper.update();
+                        }
+                    }, 100);
+                    updateUI(container);
+                    await updateFilterDisplayInUI();
+                    
+                    console.log('[Image Deck] Swiper rebuilt with', currentImages.length, 'items');
+                }
+            }
+        }
+    } catch (error) {
+        console.error('[Image Deck] Error force refreshing content:', error);
+    }
+}
+
+function getSlideTemplateImpl(img, contextInfo, isEager = false) {
+    const fullSrc = img.paths.image;
+    const isGallery = img.url && !contextInfo?.isSingleGallery;
+    const loading = isEager ? 'eager' : 'lazy';
+    const title = img.title || 'Untitled';
+
+    if (isGallery) {
+        const imageCountDisplay = img.image_count !== undefined ? 
+            `${GALLERY_ICON_SVG}: ${img.image_count}` : '';
+        
+        let performerDisplay = '';
+        if (img.performers && img.performers.length > 0) {
+            const performerNames = img.performers.map(p => p.name).join(', ');
+            performerDisplay = `<div class="gallery-performers" style="margin-top: 5px; font-size: 18px; color: #ccc;">${performerNames}</div>`;
+        }
+        
+        return `
+            <div class="swiper-zoom-container" data-type="gallery" data-url="${img.url}">
+                <div class="gallery-cover-container">
+                    <div class="gallery-cover-title" title="${title}">${title}</div>
+                    ${imageCountDisplay ? `<div class="gallery-image-count" style="font-size: 18px; color: #ccc; margin-top: 3px;">${imageCountDisplay}</div>` : ''}
+                    <a href="${img.url}" target="_blank" class="gallery-cover-link">
+                        <img src="${fullSrc}" alt="${title}" decoding="async" loading="${loading}" />
+                    </a>
+                    ${performerDisplay}
+                </div>
+            </div>`;
+    }
+
+    return `
+        <div class="swiper-zoom-container" data-type="image">
+            <img src="${fullSrc}" alt="${title}" decoding="async" loading="${loading}" 
+                 style="max-width: 100%; height: auto; display: block; margin: 0 auto;" />
+        </div>`;
+}
 
 export async function openDeck(targetImageId = null) {
     console.log('[Image Deck] Opening deck...', targetImageId);
     console.log('[Image Deck] Current URL:', window.location.pathname);
     
     try {
-        // Reset chunk tracking
         currentChunkPage = 1;
         chunkSize = 50;
         totalImageCount = 0;
         totalPages = 0;
-
-        // Load config
         pluginConfig = await getPluginConfig();
         console.log('[Image Deck] Plugin config loaded:', pluginConfig);
-
-        // Inject dynamic styles
         injectDynamicStyles(pluginConfig);
-
-        // 1. Context Detection Logic
+        
         let detectedContext = detectContext();
-
-        // Special handling for performer pages
-        const path = window.location.pathname;
-        if (path.match(/^\/performers\/\d+/) && !detectedContext) {
-            const performerMatch = path.match(/^\/performers\/(\d+)/);
-            if (performerMatch) {
-                const performerId = performerMatch[1];
-                // Determine if we're on images or galleries tab
-                const isImagesTab = path.includes('/images') || 
-                                   window.location.hash.includes('images') ||
-                                   document.querySelector('.nav-tabs .active')?.textContent?.includes('Images');
-                const isGalleriesTab = path.includes('/galleries') || 
-                                      window.location.hash.includes('galleries') ||
-                                      document.querySelector('.nav-tabs .active')?.textContent?.includes('Galleries');
-                
-                const type = isGalleriesTab ? 'galleries' : 'images';
-                
-                detectedContext = {
-                    type: type,
-                    id: performerId,
-                    performerId: performerId,
-                    isPerformerContext: true,
-                    filter: {
-                        performers: { value: [performerId], modifier: "INCLUDES" },
-                        sortBy: 'created_at',
-                        sortDir: 'desc'
-                    }
-                };
-                
-                // Parse URL parameters for sorting
-                const params = new URLSearchParams(window.location.search);
-                if (params.has('sortby')) {
-                    detectedContext.filter.sortBy = params.get('sortby');
-                }
-                if (params.has('sortdir')) {
-                    detectedContext.filter.sortDir = params.get('sortdir');
-                }
-            }
-        }
-
-        // If we are on a gallery listing page, ensure detectContext 
-        // has correctly identified it. If not, we force the refresh here.
-        if (window.location.pathname === '/galleries' && !detectedContext?.isGalleryListing) {
+        const storedMode = sessionStorage.getItem('imageDeckMode');
+        
+        // Handle mode overrides based on context and stored preferences
+        if (detectedContext && detectedContext.type === 'galleries' && storedMode === 'image') {
+            // Override to images mode
+            detectedContext = {
+                type: 'images',
+                isGeneralListing: true,
+                filter: detectedContext.filter || {},
+                hash: window.location.hash
+            };
+        } else if (detectedContext && (detectedContext.type === 'images' || detectedContext.isGeneralListing) && storedMode === 'gallery') {
+            // Override to galleries mode
             detectedContext = {
                 type: 'galleries',
                 isGalleryListing: true,
-                filter: parseUrlFilters(window.location.search) // This is the crucial part
+                filter: detectedContext.filter || {},
+                hash: window.location.hash
+            };
+        }
+        
+        // Handle performer contexts specifically
+        const path = window.location.pathname;
+        const performerMatch = path.match(/^\/performers\/(\d+)(?:\/(galleries|images))?/);
+        if (performerMatch) {
+            const [, performerId, viewType] = performerMatch;
+            
+            // Determine mode based on URL, stored preference, or default
+            let type = 'galleries';
+            if (viewType === 'images' || storedMode === 'image') {
+                type = 'images';
+            } else if (viewType === 'galleries' || storedMode === 'gallery') {
+                type = 'galleries';
+            }
+            
+            // Preserve existing filters and ensure performer filter is included
+            const existingFilters = detectedContext?.filter || {};
+            if (!existingFilters.performers) {
+                existingFilters.performers = {
+                    value: [performerId],
+                    modifier: "INCLUDES"
+                };
+            }
+            
+            // Ensure default sorting if not specified
+            if (!existingFilters.sortBy) existingFilters.sortBy = 'created_at';
+            if (!existingFilters.sortDir) existingFilters.sortDir = 'desc';
+            
+            detectedContext = {
+                type: type,
+                id: performerId,
+                performerId: performerId,
+                isPerformerContext: true,
+                filter: existingFilters
+            };
+        }
+
+        if (!detectedContext) {
+            console.log('[Image Deck] No context detected, defaulting to galleries');
+            detectedContext = {
+                type: 'galleries',
+                isGalleryListing: true,
+                filter: {
+                    sortBy: 'created_at',
+                    sortDir: 'desc'  
+                }
+            };
+        }
+
+        // Handle tag filters from sessionStorage
+        const tagFilter = sessionStorage.getItem('galleryTagFilter');
+        if (tagFilter && detectedContext) {
+            try {
+                const filterObj = JSON.parse(tagFilter);
+                
+                // Initialize filter object if it doesn't exist
+                if (!detectedContext.filter) {
+                    detectedContext.filter = {};
+                }
+
+                // Apply tag filters
+                if ((filterObj.includedTags && filterObj.includedTags.length > 0) || 
+                    (filterObj.excludedTags && filterObj.excludedTags.length > 0)) {
+                    
+                    if (filterObj.includedTags && filterObj.includedTags.length > 0) {
+                        detectedContext.filter.tags = {
+                            value: filterObj.includedTags,
+                            modifier: "INCLUDES"
+                        };
+                    }
+                    
+                    if (filterObj.excludedTags && filterObj.excludedTags.length > 0) {
+                        if (detectedContext.filter.tags) {
+                            detectedContext.filter.tags.excluded = filterObj.excludedTags;
+                        } else {
+                            detectedContext.filter.tags = {
+                                value: [],
+                                modifier: "INCLUDES",
+                                excluded: filterObj.excludedTags
+                            };
+                        }
+                    }
+                }
+
+                // Apply performer filters
+                if ((filterObj.includedPerformers && filterObj.includedPerformers.length > 0) || 
+                    (filterObj.excludedPerformers && filterObj.excludedPerformers.length > 0)) {
+                    
+                    if (filterObj.includedPerformers && filterObj.includedPerformers.length > 0) {
+                        detectedContext.filter.performers = {
+                            value: filterObj.includedPerformers,
+                            modifier: "INCLUDES"
+                        };
+                    }
+                    
+                    if (filterObj.excludedPerformers && filterObj.excludedPerformers.length > 0) {
+                        if (detectedContext.filter.performers) {
+                            detectedContext.filter.performers.excluded = filterObj.excludedPerformers;
+                        } else {
+                            detectedContext.filter.performers = {
+                                value: [],
+                                modifier: "INCLUDES",
+                                excluded: filterObj.excludedPerformers
+                            };
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('[Image Deck] Error applying stored tag filter:', e);
+            }
+        }
+
+        // Set default context if none detected
+        if (!detectedContext) {
+            console.log('[Image Deck] No context detected, defaulting to galleries');
+            detectedContext = {
+                type: 'galleries',
+                isGalleryListing: true,
+                filter: {
+                    sortBy: 'created_at',
+                    sortDir: 'desc'
+                }
             };
         }
 
@@ -94,21 +546,17 @@ export async function openDeck(targetImageId = null) {
         contextInfo = detectedContext;
         console.log('[Image Deck] Context assigned:', contextInfo);
 
-        // 2. Determine what content to show
+        // Fetch content based on context
         let imageResult;
-
-        // CRITICAL FIX: When we have a targetImageId, we should use visible images 
-        // to maintain the current view context
         const isListContext = contextInfo && (
             contextInfo.isSingleGallery || 
             contextInfo.isGalleryListing || 
             contextInfo.type === 'images' || 
             contextInfo.isFilteredView ||
-            contextInfo.isPerformerContext || // Add performer context
-            window.location.pathname.startsWith('/images') // Added this
+            contextInfo.isPerformerContext || 
+            window.location.pathname.startsWith('/images') 
         );
 
-        // If we have a target image ID, prefer visible images to maintain context
         if (targetImageId) {
             console.log('[Image Deck] Using visible images for target navigation');
             imageResult = getVisibleImages();
@@ -119,16 +567,14 @@ export async function openDeck(targetImageId = null) {
             console.log('[Image Deck] Falling back to visible images');
             imageResult = getVisibleImages();
         }
-        
-        // 3. Handle data results
+
+        // Process results
         if (Array.isArray(imageResult)) {
-            // This path is for getVisibleImages() (the 20 items on screen)
             currentImages = imageResult;
             totalImageCount = imageResult.length;
             totalPages = 1;
             currentChunkPage = 1;
         } else if (imageResult) {
-            // This path is for fetchContextImages() (Full database results)
             currentImages = imageResult.images || [];
             totalImageCount = imageResult.totalCount || 0;
             totalPages = imageResult.totalPages || 1;
@@ -137,16 +583,18 @@ export async function openDeck(targetImageId = null) {
 
         console.log(`[Image Deck] Opening with ${currentImages.length} items (chunk 1 of ${totalPages || 1})`);
 
-        // 4. Create UI
-        const container = createDeckUI();
+        // Rest of the openDeck function remains the same...
+        const container = await createDeckUI(); 
         document.body.classList.add('image-deck-open');
+
+        document.body.appendChild(container);
+
+        await new Promise(resolve => requestAnimationFrame(resolve));
 
         requestAnimationFrame(() => {
             container.classList.add('active');
         });
 
-        // 5. Initialize Swiper 
-        // We pass checkAndLoadNextChunk into the update callback so it checks on every slide change
         currentSwiper = initSwiper(
             container, 
             currentImages, 
@@ -163,30 +611,54 @@ export async function openDeck(targetImageId = null) {
         window.currentImages = currentImages;
         setCurrentSwiper(currentSwiper);
         
-        // Add zoom event listeners for UI fading
         if (currentSwiper) {
             currentSwiper.on('zoomChange', (swiper, scale) => {
                 const topBar = container.querySelector('.image-deck-topbar');
-                const controls = container.querySelector('.image-deck-controls');
+                const controlsWrapper = container.querySelector('.image-deck-controls-wrapper');
                 const speedIndicator = container.querySelector('.image-deck-speed');
+                const filterDisplay = container.querySelector('.image-deck-current-filters');
                 
                 if (scale > 1) {
-                    // Fade out UI elements when zoomed in
-                    if (topBar) topBar.style.opacity = '0';
-                    if (controls) controls.style.opacity = '0';
-                    if (speedIndicator) speedIndicator.style.opacity = '0';
+                    // Hide all controls when zoomed in
+                    if (topBar) {
+                        topBar.style.opacity = '0';
+                        topBar.style.pointerEvents = 'none';
+                    }
+                    if (controlsWrapper) {
+                        controlsWrapper.style.opacity = '0';
+                        controlsWrapper.style.pointerEvents = 'none';
+                    }
+                    if (speedIndicator) {
+                        speedIndicator.style.opacity = '0';
+                        speedIndicator.style.pointerEvents = 'none';
+                    }
+                    if (filterDisplay) {
+                        filterDisplay.style.opacity = '0';
+                        filterDisplay.style.pointerEvents = 'none';
+                    }
                 } else {
-                    // Fade in UI elements when zoomed out
-                    if (topBar) topBar.style.opacity = '1';
-                    if (controls) controls.style.opacity = '1';
-                    if (speedIndicator) speedIndicator.style.opacity = '1';
+                    // Show all controls when zoomed out
+                    if (topBar) {
+                        topBar.style.opacity = '1';
+                        topBar.style.pointerEvents = 'auto';
+                    }
+                    if (controlsWrapper) {
+                        controlsWrapper.style.opacity = '1';
+                        controlsWrapper.style.pointerEvents = 'auto';
+                    }
+                    if (speedIndicator) {
+                        speedIndicator.style.opacity = '1';
+                        speedIndicator.style.pointerEvents = 'auto';
+                    }
+                    if (filterDisplay) {
+                        filterDisplay.style.opacity = '1';
+                        filterDisplay.style.pointerEvents = 'auto';
+                    }
                 }
             });
         }
-        
-        // Restore position or navigate to target image
+
         if (targetImageId) {
-            // Find the index of the target image
             const targetIndex = currentImages.findIndex(img => img.id === targetImageId);
             if (targetIndex !== -1) {
                 console.log(`[Image Deck] Navigating to target image at index ${targetIndex}`);
@@ -204,13 +676,87 @@ export async function openDeck(targetImageId = null) {
             restorePosition();
         }
 
-        // Initial UI update
         updateUI(container);
+        await restoreFilterDisplayOnOpen(container);
 
-        // Setup event handlers
         import('./controls.js').then(module => {
-            module.setupEventHandlers(container);
+            module.setupEventHandlers(container, {
+                closeDeck,
+                startAutoPlay,
+                stopAutoPlay,
+                loadNextChunk
+            });
         });
+        
+        const filterUpdateListener = (e) => {
+            console.log('[Image Deck] Received updateDeckContent event:', e.detail);
+            setTimeout(async () => {
+                // Do a complete refresh as if opening for first time
+                await forceRefreshGalleryCovers();
+                
+                // Update UI and reinitialize controls
+                const container = document.querySelector('.image-deck-container');
+                if (container) {
+                    updateUI(container);
+                    await updateFilterDisplayInUI();
+                    
+                    // Reattach zoom change listener for proper control visibility
+                    if (currentSwiper) {
+                        currentSwiper.on('zoomChange', (swiper, scale) => {
+                            const topBar = container.querySelector('.image-deck-topbar');
+                            const controlsWrapper = container.querySelector('.image-deck-controls-wrapper');
+                            const speedIndicator = container.querySelector('.image-deck-speed');
+                            const filterDisplay = container.querySelector('.image-deck-current-filters');
+                            
+                            if (scale > 1) {
+                                // Hide all controls when zoomed in
+                                if (topBar) {
+                                    topBar.style.opacity = '0';
+                                    topBar.style.pointerEvents = 'none';
+                                }
+                                if (controlsWrapper) {
+                                    controlsWrapper.style.opacity = '0';
+                                    controlsWrapper.style.pointerEvents = 'none';
+                                }
+                                if (speedIndicator) {
+                                    speedIndicator.style.opacity = '0';
+                                    speedIndicator.style.pointerEvents = 'none';
+                                }
+                                if (filterDisplay) {
+                                    filterDisplay.style.opacity = '0';
+                                    filterDisplay.style.pointerEvents = 'none';
+                                }
+                            } else {
+                                // Show all controls when zoomed out
+                                if (topBar) {
+                                    topBar.style.opacity = '1';
+                                    topBar.style.pointerEvents = 'auto';
+                                }
+                                if (controlsWrapper) {
+                                    controlsWrapper.style.opacity = '1';
+                                    controlsWrapper.style.pointerEvents = 'auto';
+                                }
+                                if (speedIndicator) {
+                                    speedIndicator.style.opacity = '1';
+                                    speedIndicator.style.pointerEvents = 'auto';
+                                }
+                                if (filterDisplay) {
+                                    filterDisplay.style.opacity = '1';
+                                    filterDisplay.style.pointerEvents = 'auto';
+                                }
+                            }
+                        });
+                    }
+                }
+            }, 100); 
+        };
+
+        window.addEventListener('updateDeckContent', filterUpdateListener);
+        cleanupFunctions.push(() => {
+            window.removeEventListener('updateDeckContent', filterUpdateListener);
+        });
+        
+        startPerformanceMonitoring();
         
     } catch (error) {
         console.error('[Image Deck] Error opening deck:', error);
@@ -218,14 +764,67 @@ export async function openDeck(targetImageId = null) {
     }
 }
 
-// Create the image deck UI
-function createDeckUI() {
-    // Remove any existing deck
+
+async function getTagNames(tagIds) {
+    if (!tagIds || tagIds.length === 0) return {};
+    
+    try {
+        const tagPromises = tagIds.map(async (tagId) => {
+            const query = `query FindTag($id: ID!) {
+                findTag(id: $id) {
+                    id
+                    name
+                }
+            }`;
+            
+            const response = await fetch('/graphql', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    query, 
+                    variables: { id: tagId } 
+                })
+            });
+            
+            const data = await response.json();
+            return data?.data?.findTag;
+        });
+        
+        const tagResults = await Promise.all(tagPromises);
+        const tagMap = {};
+        
+        tagResults.forEach(tag => {
+            if (tag) {
+                tagMap[tag.id] = tag.name;
+            }
+        });
+        
+        return tagMap;
+    } catch (error) {
+        console.error('[Image Deck] Error fetching tag names:', error);
+        return {};
+    }
+}
+
+async function createDeckUI() {
     const existing = document.querySelector('.image-deck-container');
     if (existing) existing.remove();
 
     const container = document.createElement('div');
     container.className = `image-deck-container${isMobile ? ' mobile-optimized' : ''}`;
+
+    if (isMobile) {
+        container.classList.add('mobile-performance-mode');
+    }
+    
+    const currentTags = getCurrentFilterTags(); // This returns the correct structure now
+    let filterDisplay = '';
+    
+    // Fix the condition check here
+    if (currentTags.includedTags && (currentTags.includedTags.length > 0 || currentTags.excludedTags.length > 0 || 
+        currentTags.includedPerformers.length > 0 || currentTags.excludedPerformers.length > 0)) {
+    }
+
     container.innerHTML = `
         <div class="image-deck-ambient"></div>
         <div class="image-deck-topbar">
@@ -235,6 +834,7 @@ function createDeckUI() {
                 <button class="image-deck-close">✕</button>
             </div>
         </div>
+        ${filterDisplay}
         <div class="image-deck-progress"></div>
         <div class="image-deck-loading"></div>
         <div class="image-deck-swiper swiper">
@@ -251,9 +851,11 @@ function createDeckUI() {
                 <button class="image-deck-control-btn" data-action="next">▶</button>
                 <button class="image-deck-control-btn image-deck-info-btn" data-action="info" title="Image Info (I)">ℹ</button>
                 <button class="image-deck-control-btn" data-action="next-chunk" title="Load Next Chunk">⏭️</button>
+                <!-- Gallery filter button only appears in deck viewer -->
+                <button class="image-deck-control-btn gallery-filter-btn" title="Filter Galleries by Tag">☰</button>
             </div>
         </div>
-        <div class="image-deck-speed">Speed: ${pluginConfig.autoPlayInterval}ms</div>
+        <div class="image-deck-speed">Speed: ${pluginConfig?.autoPlayInterval || 3000}ms</div>
         <div class="image-deck-metadata-modal">
             <div class="image-deck-metadata-content">
                 <div class="image-deck-metadata-header">
@@ -265,38 +867,270 @@ function createDeckUI() {
         </div>
     `;
 
-    document.body.appendChild(container);
+    // Fix the event listener setup
+    if (currentTags.includedTags && (currentTags.includedTags.length > 0 || currentTags.excludedTags.length > 0 || 
+        currentTags.includedPerformers.length > 0 || currentTags.excludedPerformers.length > 0)) {
+        setTimeout(() => {
+            const removeButtons = container.querySelectorAll('.remove-filter-tag');
+            removeButtons.forEach(button => {
+                button.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    const tagId = button.dataset.tagId;
+                    const performerId = button.dataset.performerId;
+                    const currentTags = getCurrentFilterTags();
+                    
+                    let newIncludedTags = currentTags.includedTags.filter(id => id !== tagId);
+                    let newExcludedTags = currentTags.excludedTags.filter(id => id !== tagId);
+                    let newIncludedPerformers = currentTags.includedPerformers.filter(id => id !== performerId);
+                    let newExcludedPerformers = currentTags.excludedPerformers.filter(id => id !== performerId);
+                    
+                    if (newIncludedTags.length > 0 || newExcludedTags.length > 0 || 
+                        newIncludedPerformers.length > 0 || newExcludedPerformers.length > 0) {
+                        const filterObj = {
+                            includedTags: newIncludedTags,
+                            excludedTags: newExcludedTags,
+                            includedPerformers: newIncludedPerformers,
+                            excludedPerformers: newExcludedPerformers
+                        };
+                        sessionStorage.setItem('galleryTagFilter', JSON.stringify(filterObj));
+                    } else {
+                        sessionStorage.removeItem('galleryTagFilter');
+                    }
+                    
+                    window.dispatchEvent(new CustomEvent('galleryTagFilterChanged'));
+                });
+            });
+        }, 0);
+    }
 
     return container;
 }
 
-// Update UI elements - debounced to prevent flicker
-	let uiUpdatePending = false;
-	
+async function updateFilterDisplayInUI() {
+    const container = document.querySelector('.image-deck-container');
+    if (!container) return;
+    
+    // Remove existing filter display
+    const existingFilterDisplay = container.querySelector('.image-deck-current-filters');
+    if (existingFilterDisplay) {
+        existingFilterDisplay.remove();
+    }
+    
+    const currentTags = getCurrentFilterTags();
+    
+    // Only proceed if there are actually filters applied
+    if (currentTags.includedTags.length > 0 || currentTags.excludedTags.length > 0 || 
+        currentTags.includedPerformers.length > 0 || currentTags.excludedPerformers.length > 0) {
+        
+        const allTagIds = [...currentTags.includedTags, ...currentTags.excludedTags];
+        const allPerformerIds = [...currentTags.includedPerformers, ...currentTags.excludedPerformers];
+        
+        // Fetch names concurrently for better performance
+        const [tagNames, performerNames] = await Promise.all([
+            getTagNames(allTagIds),
+            getPerformerNames(allPerformerIds)
+        ]);
+        
+        const filterDisplay = document.createElement('div');
+        filterDisplay.className = 'image-deck-current-filters';
+        filterDisplay.style.cssText = 'position: absolute; top: 60px; left: 20px; right: 20px; z-index: 10; display: flex; flex-wrap: wrap; gap: 5px;';
+        
+        let filterHtml = '<span style="color: #ccc; font-size: 12px; background: rgba(0,0,0,0.5); padding: 2px 8px; border-radius: 10px;">FILTERED BY:</span>';
+        
+        // Included Tags (green)
+        filterHtml += currentTags.includedTags.map(tagId => {
+            const tagName = tagNames[tagId] || `Tag:${tagId}`;
+            return `
+                <span class="filter-tag-display" data-tag-id="${tagId}" style="color: white; font-size: 12px; background: rgba(46, 204, 113, 0.7); padding: 2px 8px; border-radius: 10px; display: flex; align-items: center;">
+                    ✅ ${tagName}
+                    <button class="remove-filter-tag" data-tag-id="${tagId}" style="background: none; border: none; color: white; margin-left: 5px; cursor: pointer; font-size: 14px;">×</button>
+                </span>`;
+        }).join('');
+        
+        // Excluded Tags (red)
+        filterHtml += currentTags.excludedTags.map(tagId => {
+            const tagName = tagNames[tagId] || `Tag:${tagId}`;
+            return `
+                <span class="filter-tag-display" data-tag-id="${tagId}" style="color: white; font-size: 12px; background: rgba(231, 76, 60, 0.7); padding: 2px 8px; border-radius: 10px; display: flex; align-items: center;">
+                    ❌ ${tagName}
+                    <button class="remove-filter-tag" data-tag-id="${tagId}" style="background: none; border: none; color: white; margin-left: 5px; cursor: pointer; font-size: 14px;">×</button>
+                </span>`;
+        }).join('');
+        
+        // Included Performers (pink)
+        filterHtml += currentTags.includedPerformers.map(performerId => {
+            const performerName = performerNames[performerId] || `Performer:${performerId}`;
+            return `
+                <span class="filter-tag-display" data-performer-id="${performerId}" style="color: white; font-size: 12px; background: rgba(233, 30, 99, 0.7); padding: 2px 8px; border-radius: 10px; display: flex; align-items: center;">
+                    ✅ ${performerName}
+                    <button class="remove-filter-tag" data-performer-id="${performerId}" style="background: none; border: none; color: white; margin-left: 5px; cursor: pointer; font-size: 14px;">×</button>
+                </span>`;
+        }).join('');
+        
+        // Excluded Performers (pink/darker)
+        filterHtml += currentTags.excludedPerformers.map(performerId => {
+            const performerName = performerNames[performerId] || `Performer:${performerId}`;
+            return `
+                <span class="filter-tag-display" data-performer-id="${performerId}" style="color: white; font-size: 12px; background: rgba(156, 39, 176, 0.7); padding: 2px 8px; border-radius: 10px; display: flex; align-items: center;">
+                    ❌ ${performerName}
+                    <button class="remove-filter-tag" data-performer-id="${performerId}" style="background: none; border: none; color: white; margin-left: 5px; cursor: pointer; font-size: 14px;">×</button>
+                </span>`;
+        }).join('');
+        
+        filterDisplay.innerHTML = filterHtml;
+        filterDisplay.style.display = 'flex'; // Make sure it's visible
+        container.insertBefore(filterDisplay, container.querySelector('.image-deck-progress'));
+        
+        // COMPLETELY REINITIALIZE CONTROLS - THIS IS THE KEY CHANGE
+        setTimeout(() => {
+            import('./controls.js').then(module => {
+                // Clean up existing event handlers first
+                module.cleanupEventHandlers();
+                
+                // Re-setup event handlers with fresh context
+                module.setupEventHandlers(container, {
+                    closeDeck,
+                    startAutoPlay,
+                    stopAutoPlay,
+                    loadNextChunk
+                });
+            });
+        }, 0);
+    }
+}
+
+
+
+let uiUpdatePending = false;
+
 function updateUI(container) {
     if (!currentSwiper || uiUpdatePending) return;
 
     uiUpdatePending = true;
     requestAnimationFrame(() => {
+        let modeIndicator = container.querySelector('.mode-indicator');
+        if (!modeIndicator) {
+            const topBar = container.querySelector('.image-deck-topbar');
+            if (topBar) {
+                modeIndicator = document.createElement('div');
+                modeIndicator.className = 'mode-indicator';
+                modeIndicator.style.cssText = `
+                    position: absolute;
+                    left: 20px;
+                    top: 40px;  /* Position below the counter */
+                    font-size: 14px;
+                    font-weight: bold;
+                    z-index: 11;
+                    display: flex;
+                    align-items: center;
+                    gap: 5px;
+                    cursor: pointer;
+                `;
+                
+                topBar.appendChild(modeIndicator);
+                
+			modeIndicator.addEventListener('click', async () => {
+				const currentMode = contextInfo?.type === 'galleries' ? 'gallery' : 'image';
+				const newMode = currentMode === 'gallery' ? 'image' : 'gallery';
+
+				// Store the new mode
+				sessionStorage.setItem('imageDeckMode', newMode);
+				
+				// Get current filters to preserve them including sort settings
+				const currentFilters = {...(contextInfo?.filter || {})};
+				
+				// Ensure sorting is preserved
+				if (!currentFilters.sortBy) currentFilters.sortBy = 'created_at';
+				if (!currentFilters.sortDir) currentFilters.sortDir = 'desc';
+				
+				// Handle performer context properly
+				if (contextInfo?.performerId) {
+					// Ensure performer filter is maintained
+					if (!currentFilters.performers) {
+						currentFilters.performers = {
+							value: [contextInfo.performerId],
+							modifier: "INCLUDES"
+						};
+					}
+					
+					// Update URL based on new mode
+					let newPath = `/performers/${contextInfo.performerId}`;
+					if (newMode === 'gallery') {
+						newPath += '/galleries';
+					} else {
+						newPath += '/images';
+					}
+					
+					history.pushState({}, '', newPath);
+					
+					// Update context for the new mode with preserved filters
+					const newContext = {
+						type: newMode === 'gallery' ? 'galleries' : 'images',
+						performerId: contextInfo.performerId,
+						isPerformerContext: true,
+						filter: currentFilters
+					};
+					
+					// Close and reopen with new context
+					import('./deck.js').then(module => {
+						module.closeDeck();
+						setTimeout(() => {
+							module.openDeck();
+						}, 100);
+					});
+				} else {
+					// For general contexts (not performer-specific)
+					let basePath = '/';
+					if (newMode === 'gallery') {
+						basePath = '/galleries';
+					} else {
+						basePath = '/images';
+					}
+					
+					history.pushState({}, '', basePath);
+					
+					// Update context for the new mode with preserved filters
+					const newContext = {
+						type: newMode === 'gallery' ? 'galleries' : 'images',
+						isGalleryListing: newMode === 'gallery',
+						isGeneralListing: newMode === 'image',
+						filter: currentFilters
+					};
+					
+					// Close and reopen with new context
+					import('./deck.js').then(module => {
+						module.closeDeck();
+						setTimeout(() => {
+							module.openDeck();
+						}, 100);
+					});
+				}
+			});
+            }
+        }
+        
+        if (modeIndicator) {
+            const isGalleryMode = contextInfo?.type === 'galleries';
+            modeIndicator.innerHTML = isGalleryMode ? 
+                '🖼️ Gallery Mode Enabled 🖼️' : 
+                '📷 Image Mode Enabled 📷';
+        }
+
+        // Rest of the UI update code remains the same...
         let current = 1;
         const displayedTotal = currentImages.length;
         const actualTotal = totalImageCount || displayedTotal;
 
-        // Handle virtual slides differently
         if (currentSwiper.virtual) {
-            // For virtual slides, we track the active slide index
             current = currentSwiper.activeIndex + 1;
-            //console.log('[Image Deck] Virtual mode - Active index:', currentSwiper.activeIndex, 'Total slides:', currentSwiper.virtual.slides.length);
         } else {
-            // Handle looped galleries properly
             if (currentSwiper.params.loop && contextInfo?.isSingleGallery) {
-                // For looped galleries, get the real index
                 const realIndex = currentSwiper.realIndex + 1;
-                // Handle the case where we're at the cloned slides at the beginning/end
+
                 if (realIndex === 0) {
-                    current = displayedTotal; // Last slide
+                    current = displayedTotal; 
                 } else if (realIndex > displayedTotal) {
-                    current = 1; // First slide
+                    current = 1; 
                 } else {
                     current = realIndex;
                 }
@@ -305,7 +1139,6 @@ function updateUI(container) {
             }
         }
 
-        // Update counter with chunk info
         if (pluginConfig.showCounter) {
             const counter = container.querySelector('.image-deck-counter');
             const chunkInfo = totalPages > 1 ? ` (chunk ${currentChunkPage}/${totalPages})` : '';
@@ -314,7 +1147,6 @@ function updateUI(container) {
             }
         }
 
-        // Update progress bar
         if (pluginConfig.showProgressBar) {
             const progress = container.querySelector('.image-deck-progress');
             if (progress) {
@@ -333,15 +1165,12 @@ function checkAndLoadNextChunk() {
     const currentIndex = currentSwiper.activeIndex;
     const totalCurrentSlides = currentImages.length;
     
-    // 1. Only trigger if we are in the last few slides
-    // 2. Only trigger if there actually ARE more pages to fetch
     if (currentIndex >= totalCurrentSlides - 3 && currentChunkPage < totalPages) {
         console.log('[Image Deck] Auto-loading next chunk...');
         loadNextChunk(); 
     }
 }
 
-// Auto-play controls
 export function startAutoPlay() {
     if (!currentSwiper || isAutoPlaying) return;
 
@@ -360,7 +1189,6 @@ export function startAutoPlay() {
         }
     }, pluginConfig.autoPlayInterval);
 
-    // Show speed indicator briefly
     const speedIndicator = document.querySelector('.image-deck-speed');
     if (speedIndicator) {
         speedIndicator.classList.add('visible');
@@ -384,7 +1212,6 @@ export function stopAutoPlay() {
     }
 }
 
-// Save/restore position
 function savePosition() {
     if (!currentSwiper || !contextInfo) return;
     const key = `${PLUGIN_NAME}_position_${contextInfo.type}_${contextInfo.id}`;
@@ -403,153 +1230,146 @@ function restorePosition() {
     }
 }
 
-// Load next chunk of images
-
 let isChunkLoading = false; 
 
 export async function loadNextChunk(container = null) {
-    // 1. Guard: Prevent multiple simultaneous loads
-    if (isChunkLoading) {
-        console.log('[Image Deck] Load already in progress, skipping...');
-        return;
+    if (chunkLoadTimeout) {
+        clearTimeout(chunkLoadTimeout);
     }
-
-    // 2. Guard: Check if we've reached the end
-    if (currentChunkPage >= totalPages && totalPages !== 0) {
-        console.log('[Image Deck] All chunks already loaded.');
-        const loadingIndicator = document.querySelector('.image-deck-loading');
-        if (loadingIndicator) {
-            loadingIndicator.textContent = 'All items loaded';
-            setTimeout(() => { loadingIndicator.style.display = 'none'; }, 2000);
-        }
-        return;
-    }
-
-    isChunkLoading = true;
-
-    // UI Feedback
-    const loadingIndicator = document.querySelector('.image-deck-loading');
-    const nextChunkButton = document.querySelector('[data-action="next-chunk"]');
     
-    if (nextChunkButton) {
-        nextChunkButton.disabled = true;
-        nextChunkButton.style.opacity = '0.5';
-		nextChunkButton.innerHTML = '🔄';
-    }
-
-    if (loadingIndicator) {
-        loadingIndicator.style.display = 'block';
-        loadingIndicator.textContent = `Loading chunk ${currentChunkPage + 1}...`;
-    }
-
-    try {
-        const contextToUse = storedContextInfo || contextInfo || detectContext();
-        if (!contextToUse) throw new Error('Could not detect context for fetching');
-
-        const nextPage = currentChunkPage + 1;
-        const result = await fetchContextImages(contextToUse, nextPage, chunkSize);
-        
-        if (!result || !result.images || result.images.length === 0) {
-            if (loadingIndicator) loadingIndicator.textContent = 'No more items found';
-            setTimeout(() => { if (loadingIndicator) loadingIndicator.style.display = 'none'; }, 2000);
+    chunkLoadTimeout = setTimeout(async () => {
+        if (isChunkLoading) {
+            console.log('[Image Deck] Load already in progress, skipping...');
             return;
         }
 
-        // 3. Update Data State
-        currentImages.push(...result.images);
-        currentChunkPage = nextPage;
-        totalPages = result.totalPages || totalPages;
+        if (currentChunkPage >= totalPages && totalPages !== 0) {
+            console.log('[Image Deck] All chunks already loaded.');
+            const loadingIndicator = document.querySelector('.image-deck-loading');
+            if (loadingIndicator) {
+                loadingIndicator.textContent = 'All items loaded';
+                setTimeout(() => { if (loadingIndicator) loadingIndicator.style.display = 'none'; }, 2000);
+            }
+            return;
+        }
 
-        // 4. Update UI (Swiper OR Gallery)
-        if (currentSwiper && currentSwiper.virtual) {
-            // Re-generate ALL slides to ensure formatting consistency across the whole deck
-			const allSlides = currentImages.map(img => {
-			const fullSrc = img.paths.image;
-			const isGallery = img.url && !contextInfo?.isSingleGallery;
-			const title = img.title || 'Untitled';
-			const loading = 'lazy'; // Consistent with getSlideTemplate
+        isChunkLoading = true;
 
-			if (isGallery) {
-				// Use the same template structure as getSlideTemplate
-				const imageCountDisplay = img.image_count !== undefined ? 
-					`${GALLERY_ICON_SVG}: ${img.image_count}` : '';
-				
-				let performerDisplay = '';
-				if (img.performers && img.performers.length > 0) {
-					const performerNames = img.performers.map(p => p.name).join(', ');
-					performerDisplay = `<div class="gallery-performers" style="margin-top: 5px; font-size: 18px; color: #ccc;">${performerNames}</div>`;
-				}
+        const loadingIndicator = document.querySelector('.image-deck-loading');
+        const nextChunkButton = document.querySelector('[data-action="next-chunk"]');
         
-        return `
-            <div class="swiper-zoom-container" data-type="gallery" data-url="${img.url}">
-                <div class="gallery-cover-container">
-                    <div class="gallery-cover-title" title="${title}">${title}</div>
-                    ${imageCountDisplay ? `<div class="gallery-image-count" style="font-size: 18px; color: #ccc; margin-top: 3px;">${imageCountDisplay}</div>` : ''}
-                    <a href="${img.url}" target="_blank" class="gallery-cover-link">
-                        <img src="${fullSrc}" alt="${title}" decoding="async" loading="${loading}" />
-                    </a>
-                    ${performerDisplay}
-                </div>
-            </div>`;
-    }
+        if (nextChunkButton) {
+            nextChunkButton.disabled = true;
+            nextChunkButton.style.opacity = '0.5';
+            nextChunkButton.innerHTML = '🔄';
+        }
 
-		// For regular images, use the same structure as getSlideTemplate
-		return `
-			<div class="swiper-zoom-container" data-type="image">
-				<img src="${fullSrc}" alt="${title}" decoding="async" loading="${loading}" 
-					 style="max-width: 100%; height: auto; display: block; margin: 0 auto;" />
-			</div>`;
-	});
+        if (loadingIndicator) {
+            loadingIndicator.style.display = 'block';
+            loadingIndicator.textContent = `Loading chunk ${currentChunkPage + 1}...`;
+        }
 
-            // Update Swiper Virtual Slides
-            currentSwiper.virtual.slides = allSlides;
-            currentSwiper.virtual.update(true);
+        try {
+            const contextToUse = storedContextInfo || contextInfo || detectContext();
+            if (!contextToUse) throw new Error('Could not detect context for fetching');
+
+            const nextPage = currentChunkPage + 1;
+            const result = await fetchContextImages(contextToUse, nextPage, chunkSize);
             
-            // Small timeout to let DOM settle, then force a layout refresh
-            setTimeout(() => { if (currentSwiper) currentSwiper.update(); }, 100);
+            if (!result || !result.images || result.images.length === 0) {
+                if (loadingIndicator) loadingIndicator.textContent = 'No more items found';
+                setTimeout(() => { if (loadingIndicator) loadingIndicator.style.display = 'none'; }, 2000);
+                return;
+            }
 
-        } else {
-            // Logic for Standard Gallery Grid (if not using Virtual/Swiper)
-            const galleryGrid = document.querySelector('.gallery-grid');
-            if (galleryGrid) {
-                result.images.forEach(img => {
-                    const imgHTML = `<div class="gallery-item"><img src="${img.paths.image}" alt="${img.title || ''}" class="gallery-img" /></div>`;
-                    galleryGrid.insertAdjacentHTML('beforeend', imgHTML);
+            currentImages.push(...result.images);
+            currentChunkPage = nextPage;
+            totalPages = result.totalPages || totalPages;
+
+            if (currentSwiper && currentSwiper.virtual) {
+                const allSlides = currentImages.map(img => {
+                    const fullSrc = img.paths.image;
+                    const isGallery = img.url && !contextInfo?.isSingleGallery;
+                    const title = img.title || 'Untitled';
+                    const loading = 'lazy'; 
+
+                    if (isGallery) {
+                        const imageCountDisplay = img.image_count !== undefined ? 
+                            `${GALLERY_ICON_SVG}: ${img.image_count}` : '';
+                        
+                        let performerDisplay = '';
+                        if (img.performers && img.performers.length > 0) {
+                            const performerNames = img.performers.map(p => p.name).join(', ');
+                            performerDisplay = `<div class="gallery-performers" style="margin-top: 5px; font-size: 18px; color: #ccc;">${performerNames}</div>`;
+                        }
+                
+                        return `
+                            <div class="swiper-zoom-container" data-type="gallery" data-url="${img.url}">
+                                <div class="gallery-cover-container">
+                                    <div class="gallery-cover-title" title="${title}">${title}</div>
+                                    ${imageCountDisplay ? `<div class="gallery-image-count" style="font-size: 18px; color: #ccc; margin-top: 3px;">${imageCountDisplay}</div>` : ''}
+                                    <a href="${img.url}" target="_blank" class="gallery-cover-link">
+                                        <img src="${fullSrc}" alt="${title}" decoding="async" loading="${loading}" />
+                                    </a>
+                                    ${performerDisplay}
+                                </div>
+                            </div>`;
+                    }
+
+                    return `
+                        <div class="swiper-zoom-container" data-type="image">
+                            <img src="${fullSrc}" alt="${title}" decoding="async" loading="${loading}" 
+                                 style="max-width: 100%; height: auto; display: block; margin: 0 auto;" />
+                        </div>`;
                 });
+
+                currentSwiper.virtual.slides = allSlides;
+                currentSwiper.virtual.update(true);
+                
+                setTimeout(() => { if (currentSwiper) currentSwiper.update(); }, 100);
+
+            } else {
+                const galleryGrid = document.querySelector('.gallery-grid');
+                if (galleryGrid) {
+                    result.images.forEach(img => {
+                        const imgHTML = `<div class="gallery-item"><img src="${img.paths.image}" alt="${img.title || ''}" class="gallery-img" /></div>`;
+                        galleryGrid.insertAdjacentHTML('beforeend', imgHTML);
+                    });
+                }
+            }
+
+            const container = document.querySelector('.image-deck-container');
+            if (container && typeof updateUI === 'function') updateUI(container);
+
+            if (loadingIndicator) {
+                loadingIndicator.textContent = `✓ Loaded ${result.images.length} new items`;
+                setTimeout(() => { loadingIndicator.style.display = 'none'; }, 2000);
+            }
+
+        } catch (error) {
+            console.error('[Image Deck] Failed to load chunk:', error);
+            if (loadingIndicator) {
+                loadingIndicator.textContent = 'Error: ' + error.message;
+                setTimeout(() => { loadingIndicator.style.display = 'none'; }, 3000);
+            }
+        } finally {
+            isChunkLoading = false;
+            if (nextChunkButton) {
+                nextChunkButton.disabled = false;
+                nextChunkButton.style.opacity = '1';
+                nextChunkButton.innerHTML = '⏭️';
             }
         }
-
-        // 5. General UI Refresh (Context buttons, etc.)
-        const container = document.querySelector('.image-deck-container');
-        if (container && typeof updateUI === 'function') updateUI(container);
-
-        // Success Feedback
-        if (loadingIndicator) {
-            loadingIndicator.textContent = `✓ Loaded ${result.images.length} new items`;
-            setTimeout(() => { loadingIndicator.style.display = 'none'; }, 2000);
-        }
-
-    } catch (error) {
-        console.error('[Image Deck] Failed to load chunk:', error);
-        if (loadingIndicator) {
-            loadingIndicator.textContent = 'Error: ' + error.message;
-            setTimeout(() => { loadingIndicator.style.display = 'none'; }, 3000);
-        }
-    } finally {
-        isChunkLoading = false;
-        if (nextChunkButton) {
-            nextChunkButton.disabled = false;
-            nextChunkButton.style.opacity = '1';
-			nextChunkButton.innerHTML = '⏭️';
-        }
-    }
+    }, 100);
 }
 
-// Close the deck
 export function closeDeck() {
+    cleanupFunctions.forEach(cleanup => cleanup());
+    cleanupFunctions = [];
+    
     stopAutoPlay();
+    stopPerformanceMonitoring(); 
 
-    // Clean up event handlers before destroying the deck
     import('./controls.js').then(module => {
         module.cleanupEventHandlers();
     });
@@ -572,7 +1392,6 @@ export function closeDeck() {
     contextInfo = null;
     loadingQueue = [];
     
-    // Clear any remaining intervals
     if (autoPlayInterval) {
         clearInterval(autoPlayInterval);
         autoPlayInterval = null;

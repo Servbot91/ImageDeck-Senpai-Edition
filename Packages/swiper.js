@@ -1,11 +1,12 @@
-const GALLERY_ICON_SVG = '<svg fill="white" width="16" height="16" viewBox="0 0 36 36" style="vertical-align: middle;" xmlns="http://www.w3.org/2000/svg"><path d="M32,4H4A2,2,0,0,0,2,6V30a2,2,0,0,0,2,2H32a2,2,0,0,0,2-2V6A2,2,0,0,0,32,4ZM4,30V6H32V30Z"></path><path d="M8.92,14a3,3,0,1,0-3-3A3,3,0,0,0,8.92,14Zm0-4.6A1.6,1.6,0,1,1,7.33,11,1.6,1.6,0,0,1,8.92,9.41Z"></path><path d="M22.78,15.37l-5.4,5.4-4-4a1,1,0,0,0-1.41,0L5.92,22.9v2.83l6.79-6.79L16,22.18l-3.75,3.75H15l8.45-8.45L30,24V21.18l-5.81-5.81A1,1,0,0,0,22.78,15.37Z"></path></svg>';
+import { GALLERY_ICON_SVG } from './constants.js';
+import { state } from './state.js';
 
 const EFFECT_CONFIGS = {
     cards: () => ({ cardsEffect: { slideShadows: false, rotate: true, perSlideRotate: 2, perSlideOffset: 8 } }),
     coverflow: (depth) => ({ coverflowEffect: { rotate: 30, stretch: 0, depth: Math.min(depth, 100), modifier: 1, slideShadows: false } }),
     flip: () => ({ flipEffect: { slideShadows: false, limitRotation: true } }),
     cube: () => ({ cubeEffect: { shadow: false, slideShadows: false } }),
-    fade: () => ({ fadeEffect: { crossFade: true }, speed: 200 }),
+    fade: () => ({ fadeEffect: { crossFade: true }, speed: 200 } ),
     default: () => ({ spaceBetween: 20, slidesPerView: 1 })
 };
 
@@ -14,18 +15,37 @@ export function getEffectOptions(effect, pluginConfig) {
     return configFn(pluginConfig.effectDepth);
 }
 
-const getSlideTemplate = (img, contextInfo, isEager = false) => {
+const memoizedGetSlideTemplate = (() => {
+    const cache = new Map();
+    const TTL = 300000; 
+    
+    return (img, contextInfo, isEager = false) => {
+        const cacheKey = `${img.id || img.url}_${JSON.stringify(contextInfo)}_${isEager}`;
+        const now = Date.now();
+        
+        if (cache.has(cacheKey)) {
+            const cached = cache.get(cacheKey);
+            if (now - cached.timestamp < TTL) {
+                return cached.result;
+            }
+        }
+        
+        const result = getSlideTemplateImpl(img, contextInfo, isEager);
+        cache.set(cacheKey, { result, timestamp: now });
+        return result;
+    };
+})();
+
+function getSlideTemplateImpl(img, contextInfo, isEager = false) {
     const fullSrc = img.paths.image;
     const isGallery = img.url && !contextInfo?.isSingleGallery;
     const loading = isEager ? 'eager' : 'lazy';
     const title = img.title || 'Untitled';
 
     if (isGallery) {
-        // Create image count display with SVG icon
         const imageCountDisplay = img.image_count !== undefined ? 
             `${GALLERY_ICON_SVG}: ${img.image_count}` : '';
         
-        // Create performer display
         let performerDisplay = '';
         if (img.performers && img.performers.length > 0) {
             const performerNames = img.performers.map(p => p.name).join(', ');
@@ -45,29 +65,26 @@ const getSlideTemplate = (img, contextInfo, isEager = false) => {
             </div>`;
     }
 
-    // For regular images, wrap in zoom container
     return `
-        <div class="swiper-zoom-container">
+        <div class="swiper-zoom-container" data-type="image">
             <img src="${fullSrc}" alt="${title}" decoding="async" loading="${loading}" 
                  style="max-width: 100%; height: auto; display: block; margin: 0 auto;" />
         </div>`;
-};
+}
 
 export function initSwiper(container, images, pluginConfig, updateUICallback, savePositionCallback, contextInfo) {
     const swiperEl = container.querySelector('.swiper');
-    if (!swiperEl || swiperEl.swiper) return swiperEl?.swiper; // Prevent double init
+    if (!swiperEl || swiperEl.swiper) return swiperEl?.swiper;
 
     const isLooped = false;
     const effectOptions = getEffectOptions(pluginConfig.transitionEffect, pluginConfig);
 
     const swiperConfig = {
-        // Core Layout
         effect: pluginConfig.transitionEffect,
         centeredSlides: true,
         slidesPerView: 1,
         initialSlide: 0,
         
-        // Zoom functionality
         zoom: {
             maxRatio: 3,
             minRatio: 1,
@@ -75,15 +92,12 @@ export function initSwiper(container, images, pluginConfig, updateUICallback, sa
             containerClass: 'swiper-zoom-container',
             zoomedSlideClass: 'swiper-slide-zoomed'
         },
-        // Add double tap settings
         doubleTapZoom: true,
         doubleTapZoomRatio: 2,
         
-        // Center Fixes
         centeredSlidesBounds: true,
         centerInsufficientSlides: true,
-        
-        // Touch settings for better mobile experience
+		touchEventsTarget: 'container',
         touchRatio: 1,
         touchAngle: 45,
         simulateTouch: true,
@@ -92,16 +106,14 @@ export function initSwiper(container, images, pluginConfig, updateUICallback, sa
         longSwipesRatio: 0.5,
         longSwipesMs: 300,
         
-        // Prevent interference with pinch zoom
-        passiveListeners: false,       
+        passiveListeners: false,
                 
-        // Loop + Virtual Stability
         loop: isLooped,
         loopedSlides: 2,
         loopPreventsSliding: false,
         
         virtual: {
-            slides: images.map(img => getSlideTemplate(img, contextInfo, false)),
+            slides: images.map(img => memoizedGetSlideTemplate(img, contextInfo, false)),
             cache: true,
             addSlidesBefore: 3,
             addSlidesAfter: 3,
@@ -111,17 +123,18 @@ export function initSwiper(container, images, pluginConfig, updateUICallback, sa
         },
         ...effectOptions,
         on: {
-            click(s, event) {
-                const zoomContainer = event.target.closest('.swiper-zoom-container[data-type="gallery"]');
-                if (zoomContainer?.dataset.url) {
-                    window.open(zoomContainer.dataset.url, '_blank');
-                }
+			click(s, event) {
+				// Check if the click target is within an input or textarea
+				const interactiveElements = ['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'];
+				if (interactiveElements.includes(event.target.tagName)) {
+					// Allow normal behavior for form elements
+					return;
+				}
             },
             slideChange() {
                 updateUICallback?.(container);
                 savePositionCallback?.();
             },
-            // Handle infinite loading/pagination logic
             slideChangeTransitionEnd() {
                 const total = this.virtual?.slides?.length || this.slides.length;
                 if (total > 0 && this.activeIndex >= total - 3) {
@@ -131,16 +144,13 @@ export function initSwiper(container, images, pluginConfig, updateUICallback, sa
                     }
                 }
             },
-            // Double tap handler
             doubleTap: function(swiper, event) {
                 console.log('[Image Deck] Double tap detected, scale:', swiper.zoom.scale);
                 if (swiper.zoom) {
-                    // Check if current slide is not a gallery
                     const activeSlide = swiper.slides[swiper.activeIndex];
                     if (activeSlide) {
                         const zoomContainer = activeSlide.querySelector('.swiper-zoom-container');
                         if (zoomContainer && zoomContainer.dataset.type !== 'gallery') {
-                            // Toggle zoom on double tap
                             if (swiper.zoom.scale <= 1) {
                                 swiper.zoom.in(swiper.params.doubleTapZoomRatio || 2);
                                 console.log('[Image Deck] Zooming in to ratio:', swiper.params.doubleTapZoomRatio || 2);
@@ -152,23 +162,20 @@ export function initSwiper(container, images, pluginConfig, updateUICallback, sa
                     }
                 }
             },
-            // Touch start handler
             touchStart: function(swiper, event) {
-                // Reset any swipe-to-close state when starting a new touch
                 console.log('[Image Deck] Touch start');
             },
-            // Touch end handler  
             touchEnd: function(swiper, event) {
-                // Clean up any touch states
                 console.log('[Image Deck] Touch end');
             }
         }
     };
 
-    // Initialize
     const swiper = new Swiper(swiperEl, swiperConfig);
     
-    // UI Cleanup
+    state.setSwiper(swiper);
+    state.setImages(images);
+    
     const loader = container.querySelector('.image-deck-loading');
     if (loader) loader.style.display = 'none';
 

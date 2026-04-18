@@ -18,18 +18,27 @@ export async function getPluginConfig() {
         const data = await response.json();
         const settings = data?.data?.configuration?.plugins?.[PLUGIN_NAME] || {};
 
-        // Set flashier defaults
         if (!settings.autoPlayInterval || settings.autoPlayInterval === 0) settings.autoPlayInterval = 500;
         if (!settings.transitionEffect || settings.transitionEffect === '') settings.transitionEffect = 'cards';
         if (settings.showProgressBar === undefined) settings.showProgressBar = true;
         if (settings.showCounter === undefined) settings.showCounter = true;
-        if (!settings.preloadImages || settings.preloadImages === 0) settings.preloadImages = isMobile ? 1 : 1;
+		if (!settings.preloadImages || settings.preloadImages === 0) settings.preloadImages = isMobile ? 1 : 2;
         if (!settings.swipeResistance || settings.swipeResistance === 0) settings.swipeResistance = 80;
         if (!settings.effectDepth || settings.effectDepth === 0) settings.effectDepth = 150;
-		if (settings.chunkSize === undefined) settings.chunkSize = 30; // Smaller chunks for better responsiveness
-		if (settings.lazyLoadThreshold === undefined) settings.lazyLoadThreshold = 2; // Load 2 slides ahead/behind
-		
-        // Visual effects defaults (flashier!)
+        if (settings.chunkSize === undefined) settings.chunkSize = 30; 
+        if (settings.lazyLoadThreshold === undefined) settings.lazyLoadThreshold = 2; 
+        
+        if (isMobile) {
+            settings.autoPlayInterval = Math.max(settings.autoPlayInterval, 1000); 
+            settings.preloadImages = 1; 
+            settings.chunkSize = 20; 
+            settings.lazyLoadThreshold = 1; 
+            
+            settings.imageGlowIntensity = Math.min(settings.imageGlowIntensity, 20);
+            settings.edgeGlowIntensity = Math.min(settings.edgeGlowIntensity, 30);
+            settings.ambientPulseSpeed = Math.max(settings.ambientPulseSpeed, 10); 
+        }
+        
         if (!settings.ambientColorHue || settings.ambientColorHue === 0) settings.ambientColorHue = 260;
         if (!settings.imageGlowIntensity || settings.imageGlowIntensity === 0) settings.imageGlowIntensity = 40;
         if (!settings.ambientPulseSpeed || settings.ambientPulseSpeed === 0) settings.ambientPulseSpeed = 6;
@@ -226,6 +235,22 @@ export function injectDynamicStyles(settings) {
                 width: 35px;
                 height: 35px;
                 font-size: 14px;
+            }
+            
+            /* Mobile performance mode */
+            .image-deck-container.mobile-performance-mode {
+                filter: none !important;
+                box-shadow: none !important;
+                backdrop-filter: none !important;
+            }
+            
+            .image-deck-container.mobile-performance-mode .swiper-slide img {
+                filter: none !important;
+                will-change: auto;
+            }
+            
+            .image-deck-ambient {
+                animation: none !important;
             }
         }
         

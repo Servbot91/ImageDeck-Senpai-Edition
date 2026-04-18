@@ -9,91 +9,8 @@
       __defProp(target, name, { get: all[name], enumerable: true });
   };
 
-  // context.js
-  function detectContext() {
-    const path = window.location.pathname;
-    const hash = window.location.hash;
-    const search = window.location.search;
-    const imageIdMatch = path.match(/^\/images\/(\d+)$/);
-    if (imageIdMatch) {
-      return { type: "images", id: imageIdMatch[1], hash, isSingleImage: true };
-    }
-    if (path.startsWith("/galleries")) {
-      const galleryIdMatch = path.match(/^\/galleries\/(\d+)/);
-      const params = new URLSearchParams(search);
-      if (galleryIdMatch) {
-        const filter = parseUrlFilters2(search);
-        if (!params.get("sortby") && !params.get("sortdir")) {
-          filter.sortBy = "title";
-          filter.sortDir = "asc";
-        }
-        return { type: "galleries", id: galleryIdMatch[1], hash, isSingleGallery: true, filter };
-      } else {
-        const filters = parseUrlFilters2(search);
-        return { type: "galleries", isGalleryListing: true, filter: filters, hash };
-      }
-    }
-    if (path.startsWith("/images")) {
-      const filters = parseUrlFilters2(search);
-      return {
-        type: "images",
-        isFilteredView: !!search,
-        // true if there are any search params
-        isGeneralListing: !search,
-        // true if it's just the base /images page
-        filter: filters,
-        hash
-      };
-    }
-    const performerMatch = path.match(/^\/performers\/(\d+)(?:\/(galleries|images))?/);
-    if (performerMatch) {
-      const [, performerId, tab] = performerMatch;
-      const isImagesTab = tab === "images" || hash.includes("images") || document.querySelector(".nav-tabs .active")?.textContent?.includes("Images");
-      const isGalleriesTab = tab === "galleries" || hash.includes("galleries") || document.querySelector(".nav-tabs .active")?.textContent?.includes("Galleries");
-      const activeTab = isGalleriesTab ? "galleries" : "images";
-      const filter = {
-        performers: { value: [performerId], modifier: "INCLUDES" }
-      };
-      const params = new URLSearchParams(search);
-      if (params.has("sortby")) {
-        filter.sortBy = params.get("sortby");
-      }
-      if (params.has("sortdir")) {
-        filter.sortDir = params.get("sortdir");
-      }
-      return {
-        type: activeTab,
-        id: performerId,
-        filter,
-        isPerformerContext: true,
-        performerId,
-        hash
-      };
-    }
-    const idMatch = path.match(/\/(\w+)\/(\d+)/);
-    if (idMatch) {
-      const [, type, id] = idMatch;
-      const isImagesTab = hash.includes("images") || document.querySelector(".nav-tabs .active")?.textContent?.includes("Images");
-      if (isImagesTab || type === "galleries") {
-        const filter = {};
-        if (type === "performers") filter.performers = { value: [id], modifier: "INCLUDES" };
-        if (type === "tags") filter.tags = { value: [id], modifier: "INCLUDES" };
-        if (type === "studios") filter.studios = { value: [id], modifier: "INCLUDES" };
-        return { type, id, filter, hash };
-      }
-    }
-    if (document.querySelectorAll('img[src*="/image/"]').length > 0) {
-      return {
-        type: "images",
-        isGeneralListing: true,
-        filter: parseUrlFilters2(search),
-        // Still try to grab any sort/direction params
-        hash
-      };
-    }
-    return null;
-  }
-  function parseUrlFilters2(search) {
+  // filters.js
+  function parseUrlFilters(search) {
     const params = new URLSearchParams(search);
     const cParam = params.get("c");
     let parsedFilter = {};
@@ -111,15 +28,356 @@
         console.error("[Image Deck] Filter parse error:", e);
       }
     }
-    let sortDir = "asc";
-    if (params.has("sortdir")) {
-      sortDir = params.get("sortdir") || "asc";
-    }
+    const sortDir = params.get("sortdir") || "desc";
     return {
       ...parsedFilter,
       sortBy: params.get("sortby") || "created_at",
       sortDir,
       perPage: parseInt(params.get("perPage")) || 40
+    };
+  }
+  var init_filters = __esm({
+    "filters.js"() {
+    }
+  });
+
+  // context.js
+  function detectContext2() {
+    const path = window.location.pathname;
+    const hash = window.location.hash;
+    const search = window.location.search;
+    let filters = parseUrlFilters(search);
+    const storedMode = sessionStorage.getItem("imageDeckMode");
+    const isImageMode = storedMode === "image";
+    if (path === "/") {
+      const tagFilter2 = sessionStorage.getItem("galleryTagFilter");
+      if (tagFilter2) {
+        try {
+          const filterObj = JSON.parse(tagFilter2);
+          if (filterObj.includedTags && filterObj.includedTags.length > 0 || filterObj.excludedTags && filterObj.excludedTags.length > 0) {
+            if (!filters) filters = {};
+            if (filterObj.includedTags && filterObj.includedTags.length > 0) {
+              filters.tags = {
+                value: filterObj.includedTags,
+                modifier: "INCLUDES"
+              };
+            }
+            if (filterObj.excludedTags && filterObj.excludedTags.length > 0) {
+              if (filters.tags) {
+                filters.tags.excluded = filterObj.excludedTags;
+              } else {
+                filters.tags = {
+                  value: [],
+                  modifier: "INCLUDES",
+                  excluded: filterObj.excludedTags
+                };
+              }
+            }
+          }
+          if (filterObj.includedPerformers && filterObj.includedPerformers.length > 0 || filterObj.excludedPerformers && filterObj.excludedPerformers.length > 0) {
+            if (!filters) filters = {};
+            if (filterObj.includedPerformers && filterObj.includedPerformers.length > 0) {
+              filters.performers = {
+                value: filterObj.includedPerformers,
+                modifier: "INCLUDES"
+              };
+            }
+            if (filterObj.excludedPerformers && filterObj.excludedPerformers.length > 0) {
+              if (filters.performers) {
+                filters.performers.excluded = filterObj.excludedPerformers;
+              } else {
+                filters.performers = {
+                  value: [],
+                  modifier: "INCLUDES",
+                  excluded: filterObj.excludedPerformers
+                };
+              }
+            }
+          }
+        } catch (e) {
+          console.error("[Image Deck] Error parsing tag filter:", e);
+        }
+      }
+      if (!filters) filters = {};
+      if (!filters.sortBy) filters.sortBy = "created_at";
+      if (!filters.sortDir) filters.sortDir = "desc";
+      return {
+        type: isImageMode ? "images" : "galleries",
+        isGalleryListing: !isImageMode,
+        isGeneralListing: isImageMode,
+        filter: filters,
+        hash
+      };
+    }
+    if (path.startsWith("/galleries")) {
+      const galleryIdMatch = path.match(/^\/galleries\/(\d+)/);
+      if (galleryIdMatch) {
+        let singleGalleryFilters = parseUrlFilters(search);
+        if (!new URLSearchParams(search).get("sortby") && !new URLSearchParams(search).get("sortdir")) {
+          singleGalleryFilters.sortBy = "title";
+          singleGalleryFilters.sortDir = "desc";
+        }
+        return { type: "galleries", id: galleryIdMatch[1], hash, isSingleGallery: true, filter: singleGalleryFilters };
+      } else {
+        let galleryFilters = parseUrlFilters(search);
+        if (!galleryFilters) galleryFilters = {};
+        if (!galleryFilters.sortBy) galleryFilters.sortBy = "created_at";
+        if (!galleryFilters.sortDir) galleryFilters.sortDir = "desc";
+        const tagFilter2 = sessionStorage.getItem("galleryTagFilter");
+        if (tagFilter2) {
+          try {
+            const filterObj = JSON.parse(tagFilter2);
+            if (filterObj.includedTags && filterObj.includedTags.length > 0 || filterObj.excludedTags && filterObj.excludedTags.length > 0) {
+              if (!galleryFilters) {
+                galleryFilters = {};
+              }
+              if (filterObj.includedTags && filterObj.includedTags.length > 0) {
+                galleryFilters.tags = {
+                  value: filterObj.includedTags,
+                  modifier: "INCLUDES"
+                };
+              }
+              if (filterObj.excludedTags && filterObj.excludedTags.length > 0) {
+                if (galleryFilters.tags) {
+                  galleryFilters.tags.excluded = filterObj.excludedTags;
+                } else {
+                  galleryFilters.tags = {
+                    value: [],
+                    modifier: "INCLUDES",
+                    excluded: filterObj.excludedTags
+                  };
+                }
+              }
+            }
+            if (filterObj.includedPerformers && filterObj.includedPerformers.length > 0 || filterObj.excludedPerformers && filterObj.excludedPerformers.length > 0) {
+              if (!galleryFilters) {
+                galleryFilters = {};
+              }
+              if (filterObj.includedPerformers && filterObj.includedPerformers.length > 0) {
+                galleryFilters.performers = {
+                  value: filterObj.includedPerformers,
+                  modifier: "INCLUDES"
+                };
+              }
+              if (filterObj.excludedPerformers && filterObj.excludedPerformers.length > 0) {
+                if (galleryFilters.performers) {
+                  galleryFilters.performers.excluded = filterObj.excludedPerformers;
+                } else {
+                  galleryFilters.performers = {
+                    value: [],
+                    modifier: "INCLUDES",
+                    excluded: filterObj.excludedPerformers
+                  };
+                }
+              }
+            }
+          } catch (e) {
+            console.error("Error parsing tag filter:", e);
+          }
+        }
+        return { type: "galleries", isGalleryListing: true, filter: galleryFilters, hash };
+      }
+    }
+    if (path.startsWith("/images")) {
+      let imageFilters = parseUrlFilters(search);
+      if (!imageFilters) imageFilters = {};
+      if (!imageFilters.sortBy) imageFilters.sortBy = "created_at";
+      if (!imageFilters.sortDir) imageFilters.sortDir = "desc";
+      const tagFilter2 = sessionStorage.getItem("galleryTagFilter");
+      if (tagFilter2) {
+        try {
+          const filterObj = JSON.parse(tagFilter2);
+          if (filterObj.includedTags && filterObj.includedTags.length > 0 || filterObj.excludedTags && filterObj.excludedTags.length > 0) {
+            if (!imageFilters) {
+              imageFilters = {};
+            }
+            if (filterObj.includedTags && filterObj.includedTags.length > 0) {
+              imageFilters.tags = {
+                value: filterObj.includedTags,
+                modifier: "INCLUDES"
+              };
+            }
+            if (filterObj.excludedTags && filterObj.excludedTags.length > 0) {
+              if (imageFilters.tags) {
+                imageFilters.tags.excluded = filterObj.excludedTags;
+              } else {
+                imageFilters.tags = {
+                  value: [],
+                  modifier: "INCLUDES",
+                  excluded: filterObj.excludedTags
+                };
+              }
+            }
+          }
+          if (filterObj.includedPerformers && filterObj.includedPerformers.length > 0 || filterObj.excludedPerformers && filterObj.excludedPerformers.length > 0) {
+            if (!imageFilters) {
+              imageFilters = {};
+            }
+            if (filterObj.includedPerformers && filterObj.includedPerformers.length > 0) {
+              imageFilters.performers = {
+                value: filterObj.includedPerformers,
+                modifier: "INCLUDES"
+              };
+            }
+            if (filterObj.excludedPerformers && filterObj.excludedPerformers.length > 0) {
+              if (imageFilters.performers) {
+                imageFilters.performers.excluded = filterObj.excludedPerformers;
+              } else {
+                imageFilters.performers = {
+                  value: [],
+                  modifier: "INCLUDES",
+                  excluded: filterObj.excludedPerformers
+                };
+              }
+            }
+          }
+        } catch (e) {
+          console.error("Error parsing tag filter for images:", e);
+        }
+      }
+      return {
+        type: "images",
+        isFilteredView: !!search,
+        isGeneralListing: !search,
+        filter: imageFilters,
+        hash
+      };
+    }
+    const performerMatch = path.match(/^\/performers\/(\d+)(?:\/(galleries|images))?/);
+    if (performerMatch) {
+      const [, performerId, viewType] = performerMatch;
+      let type = "galleries";
+      if (viewType === "images" || isImageMode) {
+        type = "images";
+      } else if (viewType === "galleries") {
+        type = "galleries";
+      }
+      let performerFilters = {
+        performers: { value: [performerId], modifier: "INCLUDES" },
+        sortBy: "created_at",
+        sortDir: "desc"
+      };
+      const urlFilters = parseUrlFilters(search);
+      if (urlFilters) {
+        Object.assign(performerFilters, urlFilters);
+      }
+      const tagFilter2 = sessionStorage.getItem("galleryTagFilter");
+      if (tagFilter2) {
+        try {
+          const filterObj = JSON.parse(tagFilter2);
+          if (filterObj.includedTags && filterObj.includedTags.length > 0 || filterObj.excludedTags && filterObj.excludedTags.length > 0) {
+            if (filterObj.includedTags && filterObj.includedTags.length > 0) {
+              performerFilters.tags = {
+                value: filterObj.includedTags,
+                modifier: "INCLUDES"
+              };
+            }
+            if (filterObj.excludedTags && filterObj.excludedTags.length > 0) {
+              if (performerFilters.tags) {
+                performerFilters.tags.excluded = filterObj.excludedTags;
+              } else {
+                performerFilters.tags = {
+                  value: [],
+                  modifier: "INCLUDES",
+                  excluded: filterObj.excludedTags
+                };
+              }
+            }
+          }
+          if (filterObj.includedPerformers && filterObj.includedPerformers.length > 0 || filterObj.excludedPerformers && filterObj.excludedPerformers.length > 0) {
+            if (filterObj.includedPerformers && filterObj.includedPerformers.length > 0) {
+              if (performerFilters.performers) {
+                const combinedPerformers = [.../* @__PURE__ */ new Set([...performerFilters.performers.value, ...filterObj.includedPerformers])];
+                performerFilters.performers.value = combinedPerformers;
+              } else {
+                performerFilters.performers = {
+                  value: filterObj.includedPerformers,
+                  modifier: "INCLUDES"
+                };
+              }
+            }
+            if (filterObj.excludedPerformers && filterObj.excludedPerformers.length > 0) {
+              if (performerFilters.performers) {
+                performerFilters.performers.excluded = filterObj.excludedPerformers;
+              } else {
+                performerFilters.performers = {
+                  value: [performerId],
+                  modifier: "INCLUDES",
+                  excluded: filterObj.excludedPerformers
+                };
+              }
+            }
+          }
+        } catch (e) {
+          console.error("Error parsing tag filter for performer:", e);
+        }
+      }
+      return {
+        type,
+        id: performerId,
+        performerId,
+        isPerformerContext: true,
+        filter: performerFilters,
+        hash
+      };
+    }
+    let fallbackFilters = parseUrlFilters(search);
+    if (!fallbackFilters) fallbackFilters = {};
+    if (!fallbackFilters.sortBy) fallbackFilters.sortBy = "created_at";
+    if (!fallbackFilters.sortDir) fallbackFilters.sortDir = "desc";
+    const tagFilter = sessionStorage.getItem("galleryTagFilter");
+    if (tagFilter) {
+      try {
+        const filterObj = JSON.parse(tagFilter);
+        if (filterObj.includedTags && filterObj.includedTags.length > 0 || filterObj.excludedTags && filterObj.excludedTags.length > 0) {
+          if (!fallbackFilters) fallbackFilters = {};
+          if (filterObj.includedTags && filterObj.includedTags.length > 0) {
+            fallbackFilters.tags = {
+              value: filterObj.includedTags,
+              modifier: "INCLUDES"
+            };
+          }
+          if (filterObj.excludedTags && filterObj.excludedTags.length > 0) {
+            if (fallbackFilters.tags) {
+              fallbackFilters.tags.excluded = filterObj.excludedTags;
+            } else {
+              fallbackFilters.tags = {
+                value: [],
+                modifier: "INCLUDES",
+                excluded: filterObj.excludedTags
+              };
+            }
+          }
+        }
+        if (filterObj.includedPerformers && filterObj.includedPerformers.length > 0 || filterObj.excludedPerformers && filterObj.excludedPerformers.length > 0) {
+          if (!fallbackFilters) fallbackFilters = {};
+          if (filterObj.includedPerformers && filterObj.includedPerformers.length > 0) {
+            fallbackFilters.performers = {
+              value: filterObj.includedPerformers,
+              modifier: "INCLUDES"
+            };
+          }
+          if (filterObj.excludedPerformers && filterObj.excludedPerformers.length > 0) {
+            if (fallbackFilters.performers) {
+              fallbackFilters.performers.excluded = filterObj.excludedPerformers;
+            } else {
+              fallbackFilters.performers = {
+                value: [],
+                modifier: "INCLUDES",
+                excluded: filterObj.excludedPerformers
+              };
+            }
+          }
+        }
+      } catch (e) {
+        console.error("Error parsing tag filter for fallback:", e);
+      }
+    }
+    return {
+      type: "images",
+      isGeneralListing: true,
+      filter: fallbackFilters,
+      hash
     };
   }
   function getVisibleImages() {
@@ -140,7 +398,6 @@
           paths: {
             image: fullImageUrl
           },
-          // Store reference to preview button
           previewButton
         });
       }
@@ -148,25 +405,30 @@
     return images;
   }
   async function fetchContextImages(context, page = 1, perPage = 50) {
-    const { type, id, filter, isSingleGallery, isGalleryListing } = context;
-    const isFetchingGalleries = isGalleryListing || type === "galleries" && !isSingleGallery;
+    const { type, id, filter, isSingleGallery, isGalleryListing, isGeneralListing } = context;
+    const isFetchingGalleries = isGalleryListing || type === "galleries" && !isSingleGallery || type === "galleries" && isGeneralListing === false;
+    const isFetchingImages = !isFetchingGalleries;
     let query = "";
     if (isFetchingGalleries) {
       query = `query FindGalleries($filter: FindFilterType!, $gallery_filter: GalleryFilterType) {
-			findGalleries(filter: $filter, gallery_filter: $gallery_filter) {
-				count
-				galleries {
-					id title image_count cover { paths { thumbnail image } }
-					performers {
-						id
-						name
-					}
-					tags {
-						id
-					}
-				}
-			}
-		}`;
+            findGalleries(filter: $filter, gallery_filter: $gallery_filter) {
+                count
+                galleries {
+                    id title image_count cover { paths { thumbnail image } }
+                    performers {
+                        id
+                        name
+                    }
+                    tags {
+                        id
+                        name
+                    }
+                    date
+                    rating100
+                    organized
+                }
+            }
+        }`;
     } else {
       query = `query FindImages($filter: FindFilterType!, $image_filter: ImageFilterType) {
             findImages(filter: $filter, image_filter: $image_filter) {
@@ -175,10 +437,15 @@
                     id title paths { thumbnail image }
                     performers {
                         id
+                        name
                     }
                     tags {
                         id
+                        name
                     }
+                    date
+                    rating100
+                    organized
                 }
             }
         }`;
@@ -193,16 +460,11 @@
           "tags",
           "performers",
           "studios",
-          "markers",
-          "path",
           "rating100",
           "organized",
-          "is_missing",
-          "image_count",
           "date",
-          "url",
-          "photographer",
-          "code"
+          "is_missing",
+          "image_count"
         ];
         galleryAllowedFields.forEach((field) => {
           if (filter[field]) {
@@ -211,13 +473,13 @@
               if (filter[field].value && filter[field].value.length > 0) {
                 activeFilter[field] = {
                   value: filter[field].value,
-                  modifier: filter[field].modifier
+                  modifier: filter[field].modifier || "INCLUDES"
                 };
               }
-            } else {
+            } else if (filter[field].value && filter[field].value.length > 0) {
               activeFilter[field] = {
                 value: filter[field].value,
-                modifier: filter[field].modifier
+                modifier: filter[field].modifier || "INCLUDES"
               };
             }
           }
@@ -227,12 +489,11 @@
           "tags",
           "performers",
           "studios",
-          "markers",
-          "galleries",
-          "path",
           "rating100",
           "organized",
-          "is_missing"
+          "date",
+          "is_missing",
+          "galleries"
         ];
         imageAllowedFields.forEach((field) => {
           if (filter[field]) {
@@ -241,17 +502,30 @@
               if (filter[field].value && filter[field].value.length > 0) {
                 activeFilter[field] = {
                   value: filter[field].value,
-                  modifier: filter[field].modifier
+                  modifier: filter[field].modifier || "INCLUDES"
                 };
               }
-            } else {
+            } else if (filter[field].value && filter[field].value.length > 0) {
               activeFilter[field] = {
                 value: filter[field].value,
-                modifier: filter[field].modifier
+                modifier: filter[field].modifier || "INCLUDES"
               };
             }
           }
         });
+      }
+    }
+    if (context.performerId) {
+      if (isFetchingGalleries) {
+        activeFilter.performers = {
+          value: [context.performerId],
+          modifier: "INCLUDES"
+        };
+      } else {
+        activeFilter.performers = {
+          value: [context.performerId],
+          modifier: "INCLUDES"
+        };
       }
     }
     const variables = {
@@ -259,7 +533,7 @@
         per_page: perPage,
         page,
         sort: filter?.sortBy || "created_at",
-        direction: (filter?.sortDir || "desc").toUpperCase()
+        direction: (filter?.sortDir || "DESC").toUpperCase()
       }
     };
     if (isFetchingGalleries) {
@@ -306,7 +580,10 @@
           title: gallery.title,
           image_count: gallery.image_count,
           performers: gallery.performers || [],
-          // Add this line
+          tags: gallery.tags || [],
+          date: gallery.date,
+          rating100: gallery.rating100,
+          organized: gallery.organized,
           isGallery: true,
           type: "gallery",
           paths: { image: gallery.cover?.paths?.image || gallery.cover?.paths?.thumbnail || "" },
@@ -334,7 +611,14 @@
           totalCount = result.images.length;
         }
         normalizedImages = (result?.images || []).map((img) => ({
-          ...img,
+          id: img.id,
+          title: img.title,
+          performers: img.performers || [],
+          tags: img.tags || [],
+          date: img.date,
+          rating100: img.rating100,
+          organized: img.organized,
+          paths: img.paths,
           isGallery: false,
           type: "image"
         }));
@@ -360,14 +644,75 @@
   }
   var init_context = __esm({
     "context.js"() {
+      init_filters();
     }
   });
 
   // utils.js
-  var isMobile;
+  function memoize(fn, ttl = 3e5) {
+    const cache = /* @__PURE__ */ new Map();
+    return function(...args) {
+      const key = JSON.stringify(args);
+      const now = Date.now();
+      if (cache.has(key)) {
+        const { value, timestamp } = cache.get(key);
+        if (now - timestamp < ttl) {
+          return value;
+        }
+      }
+      const result = fn.apply(this, args);
+      cache.set(key, { value: result, timestamp: now });
+      return result;
+    };
+  }
+  var isMobile, LRUCache, imageCache, getSlideTemplate, fetchImageMetadata;
   var init_utils = __esm({
     "utils.js"() {
       isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768 || "ontouchstart" in window;
+      LRUCache = class {
+        constructor(maxSize = 20, ttl = 5 * 60 * 1e3) {
+          this.maxSize = maxSize;
+          this.ttl = ttl;
+          this.cache = /* @__PURE__ */ new Map();
+        }
+        set(key, value) {
+          const now = Date.now();
+          if (this.cache.size >= this.maxSize) {
+            const firstKey = this.cache.keys().next().value;
+            this.cache.delete(firstKey);
+          }
+          this.cache.set(key, {
+            value,
+            timestamp: now
+          });
+        }
+        get(key) {
+          const entry = this.cache.get(key);
+          if (!entry) return void 0;
+          const now = Date.now();
+          if (now - entry.timestamp > this.ttl) {
+            this.cache.delete(key);
+            return void 0;
+          }
+          this.cache.delete(key);
+          this.cache.set(key, entry);
+          return entry.value;
+        }
+        has(key) {
+          return this.get(key) !== void 0;
+        }
+        clear() {
+          this.cache.clear();
+        }
+        size() {
+          return this.cache.size;
+        }
+      };
+      imageCache = new LRUCache(20, 5 * 60 * 1e3);
+      getSlideTemplate = memoize((img, contextInfo2, isEager = false) => {
+      }, 6e5);
+      fetchImageMetadata = memoize(async (imageId) => {
+      }, 3e5);
     }
   });
 
@@ -391,11 +736,20 @@
       if (!settings.transitionEffect || settings.transitionEffect === "") settings.transitionEffect = "cards";
       if (settings.showProgressBar === void 0) settings.showProgressBar = true;
       if (settings.showCounter === void 0) settings.showCounter = true;
-      if (!settings.preloadImages || settings.preloadImages === 0) settings.preloadImages = isMobile ? 1 : 1;
+      if (!settings.preloadImages || settings.preloadImages === 0) settings.preloadImages = isMobile ? 1 : 2;
       if (!settings.swipeResistance || settings.swipeResistance === 0) settings.swipeResistance = 80;
       if (!settings.effectDepth || settings.effectDepth === 0) settings.effectDepth = 150;
       if (settings.chunkSize === void 0) settings.chunkSize = 30;
       if (settings.lazyLoadThreshold === void 0) settings.lazyLoadThreshold = 2;
+      if (isMobile) {
+        settings.autoPlayInterval = Math.max(settings.autoPlayInterval, 1e3);
+        settings.preloadImages = 1;
+        settings.chunkSize = 20;
+        settings.lazyLoadThreshold = 1;
+        settings.imageGlowIntensity = Math.min(settings.imageGlowIntensity, 20);
+        settings.edgeGlowIntensity = Math.min(settings.edgeGlowIntensity, 30);
+        settings.ambientPulseSpeed = Math.max(settings.ambientPulseSpeed, 10);
+      }
       if (!settings.ambientColorHue || settings.ambientColorHue === 0) settings.ambientColorHue = 260;
       if (!settings.imageGlowIntensity || settings.imageGlowIntensity === 0) settings.imageGlowIntensity = 40;
       if (!settings.ambientPulseSpeed || settings.ambientPulseSpeed === 0) settings.ambientPulseSpeed = 6;
@@ -588,6 +942,22 @@
                 height: 35px;
                 font-size: 14px;
             }
+            
+            /* Mobile performance mode */
+            .image-deck-container.mobile-performance-mode {
+                filter: none !important;
+                box-shadow: none !important;
+                backdrop-filter: none !important;
+            }
+            
+            .image-deck-container.mobile-performance-mode .swiper-slide img {
+                filter: none !important;
+                will-change: auto;
+            }
+            
+            .image-deck-ambient {
+                animation: none !important;
+            }
         }
         
         @media (max-width: 480px) {
@@ -629,7 +999,241 @@
   });
 
   // graphql.js
-  async function fetchImageMetadata(imageId) {
+  var graphql_exports = {};
+  __export(graphql_exports, {
+    applyGalleryTagFilter: () => applyGalleryTagFilter,
+    clearGalleryTagFilter: () => clearGalleryTagFilter,
+    detectContextWithFilter: () => detectContextWithFilter,
+    fetchGalleriesByTags: () => fetchGalleriesByTags,
+    fetchGalleryMetadata: () => fetchGalleryMetadata,
+    fetchImageMetadata: () => fetchImageMetadata2,
+    searchPerformers: () => searchPerformers,
+    searchStudios: () => searchStudios,
+    searchTags: () => searchTags,
+    updateGalleryMetadata: () => updateGalleryMetadata,
+    updateGalleryPerformers: () => updateGalleryPerformers,
+    updateGalleryStudio: () => updateGalleryStudio,
+    updateImageMetadata: () => updateImageMetadata,
+    updateImageTags: () => updateImageTags
+  });
+  function handleError(operation, error, defaultValue = null) {
+    console.error(`[Image Deck] Error in ${operation}:`, error);
+    return defaultValue;
+  }
+  async function fetchGalleryMetadata(galleryId) {
+    const query = `query FindGallery($id: ID!) {
+        findGallery(id: $id) {
+            created_at
+            date
+            details
+            id
+            image_count
+            organized
+            rating100
+            title
+            updated_at
+            url
+            urls
+            tags {
+                id
+                name
+            }
+            performers {
+                id
+                name
+            }
+            studio {
+                id
+                name
+            }
+        }
+    }`;
+    try {
+      const response = await safeFetch("/graphql", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query, variables: { id: galleryId } })
+      }, "GraphQL fetchGalleryMetadata");
+      if (!response) return null;
+      const data = await response.json();
+      return data?.data?.findGallery || null;
+    } catch (error) {
+      return handleError("fetchGalleryMetadata", error, null);
+    }
+  }
+  async function safeFetch(url, options, operationName = "") {
+    try {
+      const response = await fetch(url, options);
+      return response;
+    } catch (error) {
+      console.error(`[Image Deck] Error in ${operationName}:`, error);
+      return null;
+    }
+  }
+  async function updateGalleryMetadata(galleryId, updates) {
+    const mutation = `mutation GalleryUpdate($input: GalleryUpdateInput!) {
+        galleryUpdate(input: $input) {
+            id
+            title
+            details
+            organized
+        }
+    }`;
+    const input = { id: galleryId, ...updates };
+    try {
+      const response = await fetch("/graphql", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: mutation, variables: { input } })
+      });
+      const data = await response.json();
+      return data?.data?.galleryUpdate || null;
+    } catch (error) {
+      console.error("[Image Deck] Error updating gallery metadata:", error);
+      return null;
+    }
+  }
+  async function updateGalleryPerformers(galleryId, performerIds) {
+    const mutation = `mutation GalleryUpdate($input: GalleryUpdateInput!) {
+        galleryUpdate(input: $input) {
+            id
+            performers {
+                id
+                name
+            }
+        }
+    }`;
+    const input = {
+      id: galleryId,
+      performer_ids: performerIds
+    };
+    try {
+      const response = await fetch("/graphql", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: mutation, variables: { input } })
+      });
+      const data = await response.json();
+      return data?.data?.galleryUpdate || null;
+    } catch (error) {
+      console.error("[Image Deck] Error updating gallery performers:", error);
+      return null;
+    }
+  }
+  async function searchPerformers(query) {
+    const gql = `query FindPerformers($filter: FindFilterType, $performer_filter: PerformerFilterType) {
+        findPerformers(filter: $filter, performer_filter: $performer_filter) {
+            performers {
+                id
+                name
+            }
+        }
+    }`;
+    const searchTerm = query.trim();
+    if (!searchTerm) {
+      return [];
+    }
+    try {
+      const approaches = [
+        { q: searchTerm },
+        { q: `*${searchTerm}*` }
+      ];
+      for (const filter of approaches) {
+        const variables = {
+          filter: {
+            per_page: 20,
+            ...filter
+          },
+          performer_filter: {}
+        };
+        const response = await fetch("/graphql", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: gql, variables })
+        });
+        const data = await response.json();
+        const performers = data?.data?.findPerformers?.performers || [];
+        if (performers.length > 0) {
+          return performers;
+        }
+      }
+      return [];
+    } catch (error) {
+      console.error("[Image Deck] Error searching performers:", error);
+      return [];
+    }
+  }
+  async function updateGalleryStudio(galleryId, studioId) {
+    const mutation = `mutation GalleryUpdate($input: GalleryUpdateInput!) {
+        galleryUpdate(input: $input) {
+            id
+            studio {
+                id
+                name
+            }
+        }
+    }`;
+    const input = {
+      id: galleryId,
+      studio_id: studioId
+    };
+    try {
+      const response = await fetch("/graphql", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: mutation, variables: { input } })
+      });
+      const data = await response.json();
+      return data?.data?.galleryUpdate || null;
+    } catch (error) {
+      console.error("[Image Deck] Error updating gallery studio:", error);
+      return null;
+    }
+  }
+  async function searchStudios(query) {
+    const gql = `query FindStudios($filter: FindFilterType, $studio_filter: StudioFilterType) {
+        findStudios(filter: $filter, studio_filter: $studio_filter) {
+            studios {
+                id
+                name
+            }
+        }
+    }`;
+    const searchTerm = query.trim();
+    if (!searchTerm) {
+      return [];
+    }
+    try {
+      const approaches = [
+        { q: searchTerm },
+        { q: `*${searchTerm}*` }
+      ];
+      for (const filter of approaches) {
+        const variables = {
+          filter: {
+            per_page: 20,
+            ...filter
+          },
+          studio_filter: {}
+        };
+        const response = await fetch("/graphql", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: gql, variables })
+        });
+        const data = await response.json();
+        const studios = data?.data?.findStudios?.studios || [];
+        if (studios.length > 0) {
+          return studios;
+        }
+      }
+      return [];
+    } catch (error) {
+      console.error("[Image Deck] Error searching studios:", error);
+      return [];
+    }
+  }
+  async function fetchImageMetadata2(imageId) {
     const query = `query FindImage($id: ID!) {
         findImage(id: $id) {
             id
@@ -666,16 +1270,16 @@
         }
     }`;
     try {
-      const response = await fetch("/graphql", {
+      const response = await safeFetch("/graphql", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query, variables: { id: imageId } })
-      });
+      }, "GraphQL fetchImageMetadata");
+      if (!response) return null;
       const data = await response.json();
       return data?.data?.findImage || null;
     } catch (error) {
-      console.error("[Image Deck] Error fetching image metadata:", error);
-      return null;
+      return handleError("fetchImageMetadata", error, null);
     }
   }
   async function updateImageMetadata(imageId, updates) {
@@ -735,22 +1339,143 @@
             }
         }
     }`;
+    const searchTerm = query.trim();
+    if (!searchTerm) {
+      return [];
+    }
+    try {
+      const approaches = [
+        { q: searchTerm },
+        { q: `*${searchTerm}*` }
+      ];
+      for (const filter of approaches) {
+        const variables = {
+          filter: {
+            per_page: 20,
+            ...filter
+          },
+          tag_filter: {}
+        };
+        const response = await fetch("/graphql", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: gql, variables })
+        });
+        const data = await response.json();
+        const tags = data?.data?.findTags?.tags || [];
+        if (tags.length > 0) {
+          return tags;
+        }
+      }
+      return [];
+    } catch (error) {
+      console.error("[Image Deck] Error searching tags:", error);
+      return [];
+    }
+  }
+  async function fetchGalleriesByTags(tagIds, page = 1, perPage = 50) {
+    const query = `query FindGalleries($filter: FindFilterType!, $gallery_filter: GalleryFilterType) {
+        findGalleries(filter: $filter, gallery_filter: $gallery_filter) {
+            count
+            galleries {
+                id 
+                title 
+                image_count 
+                cover { 
+                    paths { 
+                        thumbnail 
+                        image 
+                    } 
+                }
+                performers {
+                    id
+                    name
+                }
+                tags {
+                    id
+                    name
+                }
+            }
+        }
+    }`;
     const variables = {
-      filter: { per_page: 20, q: query },
-      tag_filter: {}
+      filter: {
+        per_page: perPage,
+        page,
+        sort: "created_at",
+        direction: "DESC"
+      },
+      gallery_filter: {
+        tags: {
+          value: tagIds,
+          modifier: "INCLUDES"
+        }
+      }
     };
     try {
       const response = await fetch("/graphql", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: gql, variables })
+        body: JSON.stringify({ query, variables })
       });
       const data = await response.json();
-      return data?.data?.findTags?.tags || [];
+      return data?.data?.findGalleries || { count: 0, galleries: [] };
     } catch (error) {
-      console.error("[Image Deck] Error searching tags:", error);
-      return [];
+      console.error("[Image Deck] Error fetching galleries by tags:", error);
+      return { count: 0, galleries: [] };
     }
+  }
+  async function applyGalleryTagFilter(includedTags, excludedTags, includedPerformers = [], excludedPerformers = []) {
+    const filterObj = {
+      includedTags,
+      excludedTags,
+      includedPerformers,
+      excludedPerformers
+    };
+    sessionStorage.setItem("galleryTagFilter", JSON.stringify(filterObj));
+    window.dispatchEvent(new CustomEvent("galleryTagFilterChanged", {
+      detail: { includedTags, excludedTags, includedPerformers, excludedPerformers }
+    }));
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent("updateDeckContent", {
+        detail: { includedTags, excludedTags, includedPerformers, excludedPerformers }
+      }));
+    }, 100);
+  }
+  function clearGalleryTagFilter() {
+    sessionStorage.removeItem("galleryTagFilter");
+    window.dispatchEvent(new CustomEvent("galleryTagFilterChanged", {
+      detail: { includedTags: [], excludedTags: [], includedPerformers: [], excludedPerformers: [] }
+    }));
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent("updateDeckContent", {
+        detail: { includedTags: [], excludedTags: [], includedPerformers: [], excludedPerformers: [] }
+      }));
+    }, 100);
+  }
+  function detectContextWithFilter() {
+    const baseContext = detectContext();
+    const tagFilter = sessionStorage.getItem("galleryTagFilter");
+    if (tagFilter) {
+      try {
+        const tagIds = JSON.parse(tagFilter);
+        if (tagIds.length > 0) {
+          if (!baseContext.filter) {
+            baseContext.filter = {};
+          }
+          baseContext.filter = {
+            ...baseContext.filter,
+            tags: {
+              value: tagIds,
+              modifier: "INCLUDES"
+            }
+          };
+        }
+      } catch (e) {
+        console.error("Error parsing tag filter:", e);
+      }
+    }
+    return baseContext;
   }
   var init_graphql = __esm({
     "graphql.js"() {
@@ -764,19 +1489,388 @@
   async function openMetadataModal() {
     if (!currentSwiperRef) return;
     const currentIndex = currentSwiperRef.activeIndex;
-    const currentImage = window.currentImages[currentIndex];
+    const currentImage = window.currentImages?.[currentIndex];
     if (!currentImage || !currentImage.id) return;
     const modal = document.querySelector(".image-deck-metadata-modal");
     const body = document.querySelector(".image-deck-metadata-body");
-    if (!modal || !body) return;
+    const header = document.querySelector(".image-deck-metadata-header h3");
+    if (!modal || !body || !header) return;
     body.innerHTML = '<div class="metadata-loading">Loading...</div>';
     modal.classList.add("active");
-    currentMetadata = await fetchImageMetadata(currentImage.id);
+    const isGallery = currentImage.isGallery || currentImage.url || currentImage.image_count !== void 0 || currentImage.type === "gallery";
+    if (isGallery) {
+      header.textContent = "Gallery Details";
+      let galleryId = currentImage.id;
+      if (currentImage.url) {
+        const urlMatch = currentImage.url.match(/\/galleries\/(\d+)/);
+        if (urlMatch) {
+          galleryId = urlMatch[1];
+        }
+      }
+      currentMetadata = await fetchGalleryMetadata(galleryId);
+    } else {
+      header.textContent = "Image Details";
+      currentMetadata = await fetchImageMetadata2(currentImage.id);
+    }
     if (!currentMetadata) {
       body.innerHTML = '<div class="metadata-error">Failed to load metadata</div>';
       return;
     }
-    populateMetadataModal(currentMetadata);
+    if (isGallery) {
+      populateGalleryMetadataModal(currentMetadata);
+    } else {
+      populateImageMetadataModal(currentMetadata);
+    }
+  }
+  function populateGalleryMetadataModal(metadata) {
+    const body = document.querySelector(".image-deck-metadata-body");
+    if (!body) return;
+    let viewUrl = "/galleries";
+    if (metadata.id) {
+      viewUrl = `/galleries/${metadata.id}`;
+    } else if (metadata.url && metadata.url !== "null" && metadata.url !== "undefined") {
+      viewUrl = metadata.url;
+    }
+    body.innerHTML = `
+        <div class="metadata-section metadata-file-info">
+            <div class="metadata-filename" title="${metadata.title || "Untitled"}">${metadata.title || "Untitled"}</div>
+            <a href="${viewUrl}" target="_blank" class="metadata-link" title="Open gallery page in new tab">
+                View in Stash \u2192
+            </a>
+        </div>
+
+        <div class="metadata-section">
+            <label>Title</label>
+            <input type="text" class="metadata-title" value="${metadata.title || ""}" placeholder="Enter title...">
+        </div>
+
+        <div class="metadata-section">
+            <label>Details</label>
+            <textarea class="metadata-details" placeholder="Enter details...">${metadata.details || ""}</textarea>
+        </div>
+
+        <!-- STUDIO SECTION -->
+        <div class="metadata-section">
+            <label>Studio</label>
+            <div class="metadata-tags metadata-studio">
+                ${metadata.studio ? `
+                    <span class="metadata-tag" data-studio-id="${metadata.studio.id}">
+                        ${metadata.studio.name}
+                        <button class="metadata-tag-remove" data-studio-id="${metadata.studio.id}">\xD7</button>
+                    </span>
+                ` : ""}
+            </div>
+            <input type="text" class="metadata-tag-search metadata-studio-search" placeholder="Search studios...">
+            <div class="metadata-tag-results metadata-studio-results"></div>
+        </div>
+
+        <!-- PERFORMERS SECTION -->
+        <div class="metadata-section">
+            <label>Performers</label>
+            <div class="metadata-tags metadata-performers">
+                ${metadata.performers ? metadata.performers.map(
+      (performer) => `<span class="metadata-tag" data-performer-id="${performer.id}">
+                        ${performer.name}
+                        <button class="metadata-tag-remove" data-performer-id="${performer.id}">\xD7</button>
+                    </span>`
+    ).join("") : ""}
+            </div>
+            <input type="text" class="metadata-tag-search metadata-performer-search" placeholder="Search performers...">
+            <div class="metadata-tag-results metadata-performer-results"></div>
+        </div>
+
+        <!-- TAGGER SECTION -->
+        <div class="metadata-section">
+            <label>Tags</label>
+            <div class="metadata-tags">
+                ${metadata.tags ? metadata.tags.map(
+      (tag) => `<span class="metadata-tag" data-tag-id="${tag.id}">
+                        ${tag.name}
+                        <button class="metadata-tag-remove" data-tag-id="${tag.id}">\xD7</button>
+                    </span>`
+    ).join("") : ""}
+            </div>
+            <input type="text" class="metadata-tag-search" placeholder="Search tags...">
+            <div class="metadata-tag-results"></div>
+        </div>
+
+        <div class="metadata-section">
+            <label>Info</label>
+            <div class="metadata-info">
+                ${metadata.date ? `<div><strong>Date:</strong> ${metadata.date}</div>` : ""}
+                ${metadata.image_count !== void 0 ? `<div><strong>Image Count:</strong> ${metadata.image_count}</div>` : ""}
+                <div><strong>Created:</strong> ${metadata.created_at || "Unknown"}</div>
+                <div><strong>Updated:</strong> ${metadata.updated_at || "Unknown"}</div>
+                ${metadata.rating100 ? `<div><strong>Rating:</strong> ${metadata.rating100}/100</div>` : ""}
+                <div><strong>Organized:</strong> ${metadata.organized ? "Yes" : "No"}</div>
+            </div>
+        </div>
+
+        ${metadata.urls && metadata.urls.length > 0 ? `
+        <div class="metadata-section">
+            <label>URLs</label>
+            <div class="metadata-urls">
+                ${metadata.urls.map(
+      (url) => `<div><a href="${url}" target="_blank">${url}</a></div>`
+    ).join("")}
+            </div>
+        </div>` : ""}
+
+        <div class="metadata-actions">
+            <button class="metadata-save-btn">Save Changes</button>
+        </div>
+    `;
+    setupGalleryMetadataHandlers(metadata);
+  }
+  function setupGalleryMetadataHandlers(metadata) {
+    const body = document.querySelector(".image-deck-metadata-body");
+    if (!body) return;
+    const saveBtn = body.querySelector(".metadata-save-btn");
+    if (!saveBtn) return;
+    const originalTagIds = metadata.tags ? metadata.tags.map((tag) => tag.id) : [];
+    const originalPerformerIds = metadata.performers ? metadata.performers.map((performer) => performer.id) : [];
+    const originalStudioId = metadata.studio ? metadata.studio.id : null;
+    let currentTagIds = [...originalTagIds];
+    let currentPerformerIds = [...originalPerformerIds];
+    let currentStudioId = originalStudioId;
+    const studioSearch = body.querySelector(".metadata-studio-search");
+    const studioResults = body.querySelector(".metadata-studio-results");
+    let studioSearchTimeout;
+    if (studioSearch) {
+      studioSearch.addEventListener("input", (e) => {
+        clearTimeout(studioSearchTimeout);
+        const query = e.target.value.trim();
+        if (query.length < 2) {
+          studioResults.innerHTML = "";
+          return;
+        }
+        studioSearchTimeout = setTimeout(async () => {
+          const { searchStudios: searchStudios2 } = await Promise.resolve().then(() => (init_graphql(), graphql_exports));
+          const studios = await searchStudios2(query);
+          studioResults.innerHTML = studios.map(
+            (studio) => `<div class="metadata-tag-result" data-studio-id="${studio.id}" data-studio-name="${studio.name}">
+                        ${studio.name}
+                    </div>`
+          ).join("");
+          studioResults.querySelectorAll(".metadata-tag-result").forEach((result) => {
+            result.addEventListener("click", (e2) => {
+              const studioId = e2.target.dataset.studioId;
+              const studioName = e2.target.dataset.studioName;
+              const studioContainer = body.querySelector(".metadata-studio");
+              studioContainer.innerHTML = "";
+              const studioHtml = `<span class="metadata-tag" data-studio-id="${studioId}">
+                            ${studioName}
+                            <button class="metadata-tag-remove" data-studio-id="${studioId}">\xD7</button>
+                        </span>`;
+              studioContainer.insertAdjacentHTML("beforeend", studioHtml);
+              currentStudioId = studioId;
+              const newStudio = studioContainer.lastElementChild;
+              newStudio.querySelector(".metadata-tag-remove").addEventListener("click", (e3) => {
+                e3.target.closest(".metadata-tag").remove();
+                currentStudioId = null;
+              });
+              studioSearch.value = "";
+              studioResults.innerHTML = "";
+            });
+          });
+        }, 300);
+      });
+    }
+    body.querySelectorAll(".metadata-studio .metadata-tag-remove").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        const studioEl = e.target.closest(".metadata-tag");
+        if (studioEl) {
+          studioEl.remove();
+          currentStudioId = null;
+        }
+      });
+    });
+    const performerSearch = body.querySelector(".metadata-performer-search");
+    const performerResults = body.querySelector(".metadata-performer-results");
+    let performerSearchTimeout;
+    if (performerSearch) {
+      performerSearch.addEventListener("input", (e) => {
+        clearTimeout(performerSearchTimeout);
+        const query = e.target.value.trim();
+        if (query.length < 2) {
+          performerResults.innerHTML = "";
+          return;
+        }
+        performerSearchTimeout = setTimeout(async () => {
+          const { searchPerformers: searchPerformers2 } = await Promise.resolve().then(() => (init_graphql(), graphql_exports));
+          const performers = await searchPerformers2(query);
+          performerResults.innerHTML = performers.map(
+            (performer) => `<div class="metadata-tag-result" data-performer-id="${performer.id}" data-performer-name="${performer.name}">
+                        ${performer.name}
+                    </div>`
+          ).join("");
+          performerResults.querySelectorAll(".metadata-tag-result").forEach((result) => {
+            result.addEventListener("click", (e2) => {
+              const performerId = e2.target.dataset.performerId;
+              const performerName = e2.target.dataset.performerName;
+              if (currentPerformerIds.includes(performerId)) {
+                return;
+              }
+              const performersContainer = body.querySelector(".metadata-performers");
+              const performerHtml = `<span class="metadata-tag" data-performer-id="${performerId}">
+                            ${performerName}
+                            <button class="metadata-tag-remove" data-performer-id="${performerId}">\xD7</button>
+                        </span>`;
+              performersContainer.insertAdjacentHTML("beforeend", performerHtml);
+              currentPerformerIds.push(performerId);
+              const newPerformer = performersContainer.lastElementChild;
+              newPerformer.querySelector(".metadata-tag-remove").addEventListener("click", (e3) => {
+                const removePerformerId = e3.target.dataset.performerId;
+                e3.target.closest(".metadata-tag").remove();
+                currentPerformerIds = currentPerformerIds.filter((id) => id !== removePerformerId);
+              });
+              performerSearch.value = "";
+              performerResults.innerHTML = "";
+            });
+          });
+        }, 300);
+      });
+    }
+    body.querySelectorAll(".metadata-performers .metadata-tag-remove").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        const performerId = e.target.dataset.performerId;
+        const performerEl = e.target.closest(".metadata-tag");
+        if (performerEl) {
+          performerEl.remove();
+          currentPerformerIds = currentPerformerIds.filter((id) => id !== performerId);
+        }
+      });
+    });
+    const tagSearch = body.querySelector(".metadata-tag-search:not(.metadata-performer-search):not(.metadata-studio-search)");
+    const tagResults = body.querySelector(".metadata-tag-results:not(.metadata-performer-results):not(.metadata-studio-results)");
+    let tagSearchTimeout;
+    if (tagSearch) {
+      tagSearch.addEventListener("input", (e) => {
+        clearTimeout(tagSearchTimeout);
+        const query = e.target.value.trim();
+        if (query.length < 2) {
+          tagResults.innerHTML = "";
+          return;
+        }
+        tagSearchTimeout = setTimeout(async () => {
+          const { searchTags: searchTags2 } = await Promise.resolve().then(() => (init_graphql(), graphql_exports));
+          const tags = await searchTags2(query);
+          tagResults.innerHTML = tags.map(
+            (tag) => `<div class="metadata-tag-result" data-tag-id="${tag.id}" data-tag-name="${tag.name}">
+                        ${tag.name}
+                    </div>`
+          ).join("");
+          tagResults.querySelectorAll(".metadata-tag-result").forEach((result) => {
+            result.addEventListener("click", (e2) => {
+              const tagId = e2.target.dataset.tagId;
+              const tagName = e2.target.dataset.tagName;
+              if (currentTagIds.includes(tagId)) {
+                return;
+              }
+              const tagsContainer = body.querySelector(".metadata-tags:not(.metadata-performers):not(.metadata-studio)");
+              const tagHtml = `<span class="metadata-tag" data-tag-id="${tagId}">
+                            ${tagName}
+                            <button class="metadata-tag-remove" data-tag-id="${tagId}">\xD7</button>
+                        </span>`;
+              tagsContainer.insertAdjacentHTML("beforeend", tagHtml);
+              currentTagIds.push(tagId);
+              const newTag = tagsContainer.lastElementChild;
+              newTag.querySelector(".metadata-tag-remove").addEventListener("click", (e3) => {
+                const removeTagId = e3.target.dataset.tagId;
+                e3.target.closest(".metadata-tag").remove();
+                currentTagIds = currentTagIds.filter((id) => id !== removeTagId);
+              });
+              tagSearch.value = "";
+              tagResults.innerHTML = "";
+            });
+          });
+        }, 300);
+      });
+    }
+    body.querySelectorAll(".metadata-tags:not(.metadata-performers):not(.metadata-studio) .metadata-tag-remove").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        const tagId = e.target.dataset.tagId;
+        const tagEl = e.target.closest(".metadata-tag");
+        if (tagEl) {
+          tagEl.remove();
+          currentTagIds = currentTagIds.filter((id) => id !== tagId);
+        }
+      });
+    });
+    saveBtn.addEventListener("click", async () => {
+      const title = body.querySelector(".metadata-title").value;
+      const details = body.querySelector(".metadata-details").value;
+      saveBtn.textContent = "Saving...";
+      saveBtn.disabled = true;
+      try {
+        const result = await updateGalleryMetadata(metadata.id, { title, details });
+        if (!result) {
+          throw new Error("Failed to update gallery metadata");
+        }
+        const tagsChanged = JSON.stringify(currentTagIds.sort()) !== JSON.stringify(originalTagIds.sort());
+        if (tagsChanged) {
+          await updateGalleryTagsSeparately(metadata.id, currentTagIds);
+        }
+        const performersChanged = JSON.stringify(currentPerformerIds.sort()) !== JSON.stringify(originalPerformerIds.sort());
+        if (performersChanged) {
+          const { updateGalleryPerformers: updateGalleryPerformers2 } = await Promise.resolve().then(() => (init_graphql(), graphql_exports));
+          await updateGalleryPerformers2(metadata.id, currentPerformerIds);
+        }
+        const studioChanged = currentStudioId !== originalStudioId;
+        if (studioChanged) {
+          const { updateGalleryStudio: updateGalleryStudio2 } = await Promise.resolve().then(() => (init_graphql(), graphql_exports));
+          await updateGalleryStudio2(metadata.id, currentStudioId);
+        }
+        saveBtn.textContent = "Saved \u2713";
+        const filenameEl = body.querySelector(".metadata-filename");
+        if (filenameEl) {
+          filenameEl.textContent = title || "Untitled";
+        }
+        setTimeout(() => {
+          saveBtn.textContent = "Save Changes";
+          saveBtn.disabled = false;
+        }, 2e3);
+      } catch (error) {
+        console.error("[Image Deck] Error updating gallery metadata:", error);
+        saveBtn.textContent = "Error!";
+        setTimeout(() => {
+          saveBtn.textContent = "Save Changes";
+          saveBtn.disabled = false;
+        }, 2e3);
+      }
+    });
+  }
+  async function updateGalleryTagsSeparately(galleryId, tagIds) {
+    try {
+      const mutation = `mutation GalleryUpdate($input: GalleryUpdateInput!) {
+            galleryUpdate(input: $input) {
+                id
+                title
+                tags {
+                    id
+                    name
+                }
+            }
+        }`;
+      const input = {
+        id: galleryId,
+        tag_ids: tagIds
+      };
+      const response = await fetch("/graphql", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: mutation, variables: { input } })
+      });
+      const data = await response.json();
+      if (data.errors) {
+        throw new Error(data.errors[0].message);
+      }
+      console.log("[Image Deck] Gallery tags updated successfully");
+      return data?.data?.galleryUpdate || null;
+    } catch (error) {
+      console.error("[Image Deck] Error updating gallery tags:", error);
+      throw error;
+    }
   }
   function closeMetadataModal() {
     const modal = document.querySelector(".image-deck-metadata-modal");
@@ -785,7 +1879,7 @@
     }
     currentMetadata = null;
   }
-  function populateMetadataModal(metadata) {
+  function populateImageMetadataModal(metadata) {
     const body = document.querySelector(".image-deck-metadata-body");
     if (!body) return;
     const rating = metadata.rating100 ? metadata.rating100 / 20 : 0;
@@ -942,23 +2036,118 @@
     }
   });
 
+  // constants.js
+  var GALLERY_ICON_SVG;
+  var init_constants = __esm({
+    "constants.js"() {
+      GALLERY_ICON_SVG = '<svg fill="white" width="16" height="16" viewBox="0 0 36 36" style="vertical-align: middle;" xmlns="http://www.w3.org/2000/svg"><path d="M32,4H4A2,2,0,0,0,2,6V30a2,2,0,0,0,2,2H32a2,2,0,0,0,2-2V6A2,2,0,0,0,32,4ZM4,30V6H32V30Z"></path><path d="M8.92,14a3,3,0,1,0-3-3A3,3,0,0,0,8.92,14Zm0-4.6A1.6,1.6,0,1,1,7.33,11,1.6,1.6,0,0,1,8.92,9.41Z"></path><path d="M22.78,15.37l-5.4,5.4-4-4a1,1,0,0,0-1.41,0L5.92,22.9v2.83l6.79-6.79L16,22.18l-3.75,3.75H15l8.45-8.45L30,24V21.18l-5.81-5.81A1,1,0,0,0,22.78,15.37Z"></path></svg>';
+    }
+  });
+
+  // state.js
+  var ImageDeckState, state;
+  var init_state = __esm({
+    "state.js"() {
+      ImageDeckState = class {
+        constructor() {
+          this.state = {
+            swiper: null,
+            images: [],
+            config: null,
+            context: null,
+            isPlaying: false,
+            currentChunkPage: 1,
+            chunkSize: 50,
+            totalImageCount: 0,
+            totalPages: 0,
+            pluginConfig: null,
+            autoPlayInterval: null,
+            isAutoPlaying: false,
+            loadingQueue: [],
+            storedContextInfo: null
+          };
+          this.eventCallbacks = /* @__PURE__ */ new Map();
+        }
+        setState(newState) {
+          this.state = { ...this.state, ...newState };
+        }
+        getState() {
+          return { ...this.state };
+        }
+        setSwiper(swiper) {
+          this.setState({ swiper });
+        }
+        getSwiper() {
+          return this.state.swiper;
+        }
+        setImages(images) {
+          this.setState({ images });
+        }
+        getImages() {
+          return this.state.images;
+        }
+        on(event, callback) {
+          if (!this.eventCallbacks.has(event)) {
+            this.eventCallbacks.set(event, []);
+          }
+          this.eventCallbacks.get(event).push(callback);
+        }
+        emit(event, data) {
+          const callbacks = this.eventCallbacks.get(event);
+          if (callbacks) {
+            callbacks.forEach((callback) => callback(data));
+          }
+        }
+      };
+      state = new ImageDeckState();
+    }
+  });
+
   // swiper.js
   function getEffectOptions(effect, pluginConfig2) {
     const configFn = EFFECT_CONFIGS[effect] || EFFECT_CONFIGS.default;
     return configFn(pluginConfig2.effectDepth);
   }
-  function initSwiper(container2, images, pluginConfig2, updateUICallback, savePositionCallback, contextInfo2) {
-    const swiperEl = container2.querySelector(".swiper");
+  function getSlideTemplateImpl(img, contextInfo2, isEager = false) {
+    const fullSrc = img.paths.image;
+    const isGallery = img.url && !contextInfo2?.isSingleGallery;
+    const loading = isEager ? "eager" : "lazy";
+    const title = img.title || "Untitled";
+    if (isGallery) {
+      const imageCountDisplay = img.image_count !== void 0 ? `${GALLERY_ICON_SVG}: ${img.image_count}` : "";
+      let performerDisplay = "";
+      if (img.performers && img.performers.length > 0) {
+        const performerNames = img.performers.map((p) => p.name).join(", ");
+        performerDisplay = `<div class="gallery-performers" style="margin-top: 5px; font-size: 18px; color: #ccc;">${performerNames}</div>`;
+      }
+      return `
+            <div class="swiper-zoom-container" data-type="gallery" data-url="${img.url}">
+                <div class="gallery-cover-container">
+                    <div class="gallery-cover-title" title="${title}">${title}</div>
+                    ${imageCountDisplay ? `<div class="gallery-image-count" style="font-size: 18px; color: #ccc; margin-top: 3px;">${imageCountDisplay}</div>` : ""}
+                    <a href="${img.url}" target="_blank" class="gallery-cover-link">
+                        <img src="${fullSrc}" alt="${title}" decoding="async" loading="${loading}" />
+                    </a>
+                    ${performerDisplay}
+                </div>
+            </div>`;
+    }
+    return `
+        <div class="swiper-zoom-container" data-type="image">
+            <img src="${fullSrc}" alt="${title}" decoding="async" loading="${loading}" 
+                 style="max-width: 100%; height: auto; display: block; margin: 0 auto;" />
+        </div>`;
+  }
+  function initSwiper(container, images, pluginConfig2, updateUICallback, savePositionCallback, contextInfo2) {
+    const swiperEl = container.querySelector(".swiper");
     if (!swiperEl || swiperEl.swiper) return swiperEl?.swiper;
     const isLooped = false;
     const effectOptions = getEffectOptions(pluginConfig2.transitionEffect, pluginConfig2);
     const swiperConfig = {
-      // Core Layout
       effect: pluginConfig2.transitionEffect,
       centeredSlides: true,
       slidesPerView: 1,
       initialSlide: 0,
-      // Zoom functionality
       zoom: {
         maxRatio: 3,
         minRatio: 1,
@@ -966,13 +2155,11 @@
         containerClass: "swiper-zoom-container",
         zoomedSlideClass: "swiper-slide-zoomed"
       },
-      // Add double tap settings
       doubleTapZoom: true,
       doubleTapZoomRatio: 2,
-      // Center Fixes
       centeredSlidesBounds: true,
       centerInsufficientSlides: true,
-      // Touch settings for better mobile experience
+      touchEventsTarget: "container",
       touchRatio: 1,
       touchAngle: 45,
       simulateTouch: true,
@@ -980,14 +2167,12 @@
       longSwipes: true,
       longSwipesRatio: 0.5,
       longSwipesMs: 300,
-      // Prevent interference with pinch zoom
       passiveListeners: false,
-      // Loop + Virtual Stability
       loop: isLooped,
       loopedSlides: 2,
       loopPreventsSliding: false,
       virtual: {
-        slides: images.map((img) => getSlideTemplate(img, contextInfo2, false)),
+        slides: images.map((img) => memoizedGetSlideTemplate(img, contextInfo2, false)),
         cache: true,
         addSlidesBefore: 3,
         addSlidesAfter: 3,
@@ -998,16 +2183,15 @@
       ...effectOptions,
       on: {
         click(s, event) {
-          const zoomContainer = event.target.closest('.swiper-zoom-container[data-type="gallery"]');
-          if (zoomContainer?.dataset.url) {
-            window.open(zoomContainer.dataset.url, "_blank");
+          const interactiveElements = ["INPUT", "TEXTAREA", "SELECT", "BUTTON"];
+          if (interactiveElements.includes(event.target.tagName)) {
+            return;
           }
         },
         slideChange() {
-          updateUICallback?.(container2);
+          updateUICallback?.(container);
           savePositionCallback?.();
         },
-        // Handle infinite loading/pagination logic
         slideChangeTransitionEnd() {
           const total = this.virtual?.slides?.length || this.slides.length;
           if (total > 0 && this.activeIndex >= total - 3) {
@@ -1017,7 +2201,6 @@
             }
           }
         },
-        // Double tap handler
         doubleTap: function(swiper2, event) {
           console.log("[Image Deck] Double tap detected, scale:", swiper2.zoom.scale);
           if (swiper2.zoom) {
@@ -1036,25 +2219,26 @@
             }
           }
         },
-        // Touch start handler
         touchStart: function(swiper2, event) {
           console.log("[Image Deck] Touch start");
         },
-        // Touch end handler  
         touchEnd: function(swiper2, event) {
           console.log("[Image Deck] Touch end");
         }
       }
     };
     const swiper = new Swiper(swiperEl, swiperConfig);
-    const loader = container2.querySelector(".image-deck-loading");
+    state.setSwiper(swiper);
+    state.setImages(images);
+    const loader = container.querySelector(".image-deck-loading");
     if (loader) loader.style.display = "none";
     return swiper;
   }
-  var GALLERY_ICON_SVG, EFFECT_CONFIGS, getSlideTemplate;
+  var EFFECT_CONFIGS, memoizedGetSlideTemplate;
   var init_swiper = __esm({
     "swiper.js"() {
-      GALLERY_ICON_SVG = '<svg fill="white" width="16" height="16" viewBox="0 0 36 36" style="vertical-align: middle;" xmlns="http://www.w3.org/2000/svg"><path d="M32,4H4A2,2,0,0,0,2,6V30a2,2,0,0,0,2,2H32a2,2,0,0,0,2-2V6A2,2,0,0,0,32,4ZM4,30V6H32V30Z"></path><path d="M8.92,14a3,3,0,1,0-3-3A3,3,0,0,0,8.92,14Zm0-4.6A1.6,1.6,0,1,1,7.33,11,1.6,1.6,0,0,1,8.92,9.41Z"></path><path d="M22.78,15.37l-5.4,5.4-4-4a1,1,0,0,0-1.41,0L5.92,22.9v2.83l6.79-6.79L16,22.18l-3.75,3.75H15l8.45-8.45L30,24V21.18l-5.81-5.81A1,1,0,0,0,22.78,15.37Z"></path></svg>';
+      init_constants();
+      init_state();
       EFFECT_CONFIGS = {
         cards: () => ({ cardsEffect: { slideShadows: false, rotate: true, perSlideRotate: 2, perSlideOffset: 8 } }),
         coverflow: (depth) => ({ coverflowEffect: { rotate: 30, stretch: 0, depth: Math.min(depth, 100), modifier: 1, slideShadows: false } }),
@@ -1063,36 +2247,23 @@
         fade: () => ({ fadeEffect: { crossFade: true }, speed: 200 }),
         default: () => ({ spaceBetween: 20, slidesPerView: 1 })
       };
-      getSlideTemplate = (img, contextInfo2, isEager = false) => {
-        const fullSrc = img.paths.image;
-        const isGallery = img.url && !contextInfo2?.isSingleGallery;
-        const loading = isEager ? "eager" : "lazy";
-        const title = img.title || "Untitled";
-        if (isGallery) {
-          const imageCountDisplay = img.image_count !== void 0 ? `${GALLERY_ICON_SVG}: ${img.image_count}` : "";
-          let performerDisplay = "";
-          if (img.performers && img.performers.length > 0) {
-            const performerNames = img.performers.map((p) => p.name).join(", ");
-            performerDisplay = `<div class="gallery-performers" style="margin-top: 5px; font-size: 18px; color: #ccc;">${performerNames}</div>`;
+      memoizedGetSlideTemplate = /* @__PURE__ */ (() => {
+        const cache = /* @__PURE__ */ new Map();
+        const TTL = 3e5;
+        return (img, contextInfo2, isEager = false) => {
+          const cacheKey = `${img.id || img.url}_${JSON.stringify(contextInfo2)}_${isEager}`;
+          const now = Date.now();
+          if (cache.has(cacheKey)) {
+            const cached = cache.get(cacheKey);
+            if (now - cached.timestamp < TTL) {
+              return cached.result;
+            }
           }
-          return `
-            <div class="swiper-zoom-container" data-type="gallery" data-url="${img.url}">
-                <div class="gallery-cover-container">
-                    <div class="gallery-cover-title" title="${title}">${title}</div>
-                    ${imageCountDisplay ? `<div class="gallery-image-count" style="font-size: 18px; color: #ccc; margin-top: 3px;">${imageCountDisplay}</div>` : ""}
-                    <a href="${img.url}" target="_blank" class="gallery-cover-link">
-                        <img src="${fullSrc}" alt="${title}" decoding="async" loading="${loading}" />
-                    </a>
-                    ${performerDisplay}
-                </div>
-            </div>`;
-        }
-        return `
-        <div class="swiper-zoom-container">
-            <img src="${fullSrc}" alt="${title}" decoding="async" loading="${loading}" 
-                 style="max-width: 100%; height: auto; display: block; margin: 0 auto;" />
-        </div>`;
-      };
+          const result = getSlideTemplateImpl(img, contextInfo2, isEager);
+          cache.set(cacheKey, { result, timestamp: now });
+          return result;
+        };
+      })();
     }
   });
 
@@ -1100,14 +2271,22 @@
   var controls_exports = {};
   __export(controls_exports, {
     cleanupEventHandlers: () => cleanupEventHandlers,
+    getElementData: () => getElementData,
     setDeckActive: () => setDeckActive,
-    setupEventHandlers: () => setupEventHandlers
+    setupEventHandlers: () => setupEventHandlers,
+    storeElementData: () => storeElementData
   });
+  function storeElementData(element, data) {
+    elementData.set(element, data);
+  }
+  function getElementData(element) {
+    return elementData.get(element);
+  }
   function toggleFullscreen() {
-    const container2 = document.querySelector(".image-deck-container");
-    if (!container2) return;
+    const container = document.querySelector(".image-deck-container");
+    if (!container) return;
     if (!document.fullscreenElement) {
-      container2.requestFullscreen().catch((err) => {
+      container.requestFullscreen().catch((err) => {
         console.warn("[Image Deck] Fullscreen request failed:", err);
       }).finally(() => {
         updateFullscreenUI(true);
@@ -1123,119 +2302,535 @@
     if (fullscreenBtn) {
       fullscreenBtn.textContent = isFullscreen ? "\u26F6" : "\u26F6";
     }
-    const container2 = document.querySelector(".image-deck-container");
-    if (container2) {
+    const container = document.querySelector(".image-deck-container");
+    if (container) {
       if (isFullscreen) {
-        container2.classList.add("fullscreen-mode");
+        container.classList.add("fullscreen-mode");
+        updateControlVisibility(false);
       } else {
-        container2.classList.remove("fullscreen-mode");
+        container.classList.remove("fullscreen-mode");
+        updateControlVisibility(true);
+      }
+    }
+  }
+  function updateControlVisibility(isVisible = true) {
+    const container = document.querySelector(".image-deck-container");
+    if (!container) return;
+    const controlsWrapper = container.querySelector(".image-deck-controls-wrapper");
+    const topBar = container.querySelector(".image-deck-topbar");
+    const speedIndicator = container.querySelector(".image-deck-speed");
+    const filterDisplay = container.querySelector(".image-deck-current-filters");
+    const opacity = isVisible ? "1" : "0";
+    const pointerEvents = isVisible ? "auto" : "none";
+    if (topBar) {
+      topBar.style.opacity = opacity;
+      topBar.style.pointerEvents = pointerEvents;
+    }
+    if (controlsWrapper) {
+      controlsWrapper.style.opacity = opacity;
+      controlsWrapper.style.pointerEvents = pointerEvents;
+    }
+    if (speedIndicator) {
+      speedIndicator.style.opacity = opacity;
+      speedIndicator.style.pointerEvents = pointerEvents;
+    }
+    if (filterDisplay) {
+      filterDisplay.style.opacity = opacity;
+      filterDisplay.style.pointerEvents = pointerEvents;
+    }
+    if (document.fullscreenElement) {
+      if (topBar) {
+        topBar.style.opacity = "0";
+        topBar.style.pointerEvents = "none";
+      }
+      if (controlsWrapper) {
+        controlsWrapper.style.opacity = "0";
+        controlsWrapper.style.pointerEvents = "none";
+      }
+      if (speedIndicator) {
+        speedIndicator.style.opacity = "0";
+        speedIndicator.style.pointerEvents = "none";
+      }
+      if (filterDisplay) {
+        filterDisplay.style.opacity = "0";
+        filterDisplay.style.pointerEvents = "none";
       }
     }
   }
   function isCurrentSlideGallery() {
-    const swiper = window.currentSwiperInstance;
-    if (swiper && swiper.slides) {
-      const activeSlide = swiper.slides[swiper.activeIndex];
-      if (activeSlide) {
-        const zoomContainer = activeSlide.querySelector(".swiper-zoom-container");
-        if (zoomContainer && zoomContainer.dataset.type === "gallery") {
-          return true;
-        }
+    const swiper = state.getSwiper();
+    if (!swiper) return false;
+    const currentIndex = swiper.activeIndex;
+    const currentImages2 = window.currentImages || [];
+    if (currentIndex < currentImages2.length) {
+      const currentImage = currentImages2[currentIndex];
+      if (currentImage) {
+        return !!(currentImage.url && currentImage.image_count !== void 0);
       }
+    }
+    const activeSlide = swiper.slides[swiper.activeIndex];
+    if (activeSlide) {
+      const zoomContainer = activeSlide.querySelector(".swiper-zoom-container");
+      return zoomContainer && zoomContainer.dataset.type === "gallery";
     }
     return false;
   }
   function updateGalleryStateClass() {
-    const container2 = document.querySelector(".image-deck-container");
-    if (!container2) return;
+    const container = document.querySelector(".image-deck-container");
+    if (!container) return;
     if (isCurrentSlideGallery()) {
-      container2.classList.add("gallery-active");
+      container.classList.add("gallery-active");
     } else {
-      container2.classList.remove("gallery-active");
+      container.classList.remove("gallery-active");
     }
   }
-  function setupEventHandlers(container2) {
+  function showGalleryTagFilter() {
+    const existingModal = document.querySelector(".gallery-tag-filter-modal");
+    if (existingModal) {
+      existingModal.remove();
+    }
+    const modal = document.createElement("div");
+    modal.className = "gallery-tag-filter-modal image-deck-metadata-modal";
+    modal.style.cssText = `
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 90%;
+        max-width: 500px;
+        max-height: 90vh;
+        background: rgba(0, 0, 0, 0.95);
+        backdrop-filter: blur(20px);
+        border-radius: 20px;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+        z-index: 10000;
+        display: flex;
+        flex-direction: column;
+    `;
+    modal.innerHTML = `
+        <div class="image-deck-metadata-content" style="display: flex; flex-direction: column; height: auto; max-height: 90vh;">
+            <div class="image-deck-metadata-header">
+                <h3>Filter Galleries by Tag</h3>
+                <button class="close-filter-modal image-deck-metadata-close" style="width: 36px; height: 36px; font-size: 24px;">\u2715</button>
+            </div>
+            <div class="image-deck-metadata-body" style="flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column;">
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; color: rgba(255,255,255,0.7); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; font-weight: 600;">Included Tags</label>
+                    <input type="text" class="included-tag-search" placeholder="Search tags..." style="width: 100%; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; color: white; padding: 12px; font-size: 14px; margin-bottom: 10px;">
+                    <div class="included-tag-list" style="max-height: 150px; overflow-y: auto; background: rgba(255,255,255,0.05); border-radius: 8px; padding: 5px; margin-bottom: 15px;"></div>
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; color: rgba(255,255,255,0.7); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; font-weight: 600;">Excluded Tags</label>
+                    <input type="text" class="excluded-tag-search" placeholder="Search tags..." style="width: 100%; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; color: white; padding: 12px; font-size: 14px; margin-bottom: 10px;">
+                    <div class="excluded-tag-list" style="max-height: 150px; overflow-y: auto; background: rgba(255,255,255,0.05); border-radius: 8px; padding: 5px; margin-bottom: 15px;"></div>
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; color: rgba(255,255,255,0.7); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; font-weight: 600;">Included Performers</label>
+                    <input type="text" class="included-performer-search" placeholder="Search performers..." style="width: 100%; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; color: white; padding: 12px; font-size: 14px; margin-bottom: 10px;">
+                    <div class="included-performer-list" style="max-height: 150px; overflow-y: auto; background: rgba(255,255,255,0.05); border-radius: 8px; padding: 5px; margin-bottom: 15px;"></div>
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; color: rgba(255,255,255,0.7); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; font-weight: 600;">Excluded Performers</label>
+                    <input type="text" class="excluded-performer-search" placeholder="Search performers..." style="width: 100%; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; color: white; padding: 12px; font-size: 14px; margin-bottom: 10px;">
+                    <div class="excluded-performer-list" style="max-height: 150px; overflow-y: auto; background: rgba(255,255,255,0.05); border-radius: 8px; padding: 5px; margin-bottom: 15px;"></div>
+                </div>
+            </div>
+            <div style="padding: 0 20px 20px 20px;">
+                <div style="display: flex; gap: 12px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1);">
+                    <button class="clear-tag-filter" style="flex: 1; padding: 14px 24px; border-radius: 8px; background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s ease;">Clear</button>
+                    <button class="apply-tag-filter" style="flex: 1; padding: 14px 24px; border-radius: 8px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s ease;">Apply Filter</button>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    const closeBtn = modal.querySelector(".close-filter-modal");
+    closeBtn.addEventListener("click", () => {
+      modal.remove();
+    });
+    const escapeHandler = (e) => {
+      if (e.key === "Escape") {
+        modal.remove();
+        document.removeEventListener("keydown", escapeHandler);
+      }
+    };
+    document.addEventListener("keydown", escapeHandler);
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) {
+        modal.remove();
+      }
+    });
+    const includedSearchInput = modal.querySelector(".included-tag-search");
+    const excludedSearchInput = modal.querySelector(".excluded-tag-search");
+    const includedPerformerSearchInput = modal.querySelector(".included-performer-search");
+    const excludedPerformerSearchInput = modal.querySelector(".excluded-performer-search");
+    const includedTagList = modal.querySelector(".included-tag-list");
+    const excludedTagList = modal.querySelector(".excluded-tag-list");
+    const includedPerformerList = modal.querySelector(".included-performer-list");
+    const excludedPerformerList = modal.querySelector(".excluded-performer-list");
+    let includedTags = [];
+    let excludedTags = [];
+    let includedPerformers = [];
+    let excludedPerformers = [];
+    function setupTagSearch(inputElement, tagListContainer, selectedTags, type) {
+      let searchTimeout;
+      inputElement.addEventListener("input", async (e) => {
+        clearTimeout(searchTimeout);
+        const query = e.target.value.trim();
+        if (query.length >= 1) {
+          searchTimeout = setTimeout(async () => {
+            try {
+              const tags = await searchTags(query);
+              renderTagList(tags, tagListContainer, selectedTags, type);
+            } catch (error) {
+              console.error("Error searching tags:", error);
+              tagListContainer.innerHTML = '<div style="color: #ff6b6b; padding: 8px;">Error loading tags</div>';
+            }
+          }, 300);
+        } else {
+          tagListContainer.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type to search tags</div>';
+        }
+      });
+    }
+    function setupPerformerSearch(inputElement, performerListContainer, selectedPerformers, type) {
+      let searchTimeout;
+      inputElement.addEventListener("input", async (e) => {
+        clearTimeout(searchTimeout);
+        const query = e.target.value.trim();
+        if (query.length >= 1) {
+          searchTimeout = setTimeout(async () => {
+            try {
+              const performers = await searchPerformers(query);
+              renderPerformerList(performers, performerListContainer, selectedPerformers, type);
+            } catch (error) {
+              console.error("Error searching performers:", error);
+              performerListContainer.innerHTML = '<div style="color: #ff6b6b; padding: 8px;">Error loading performers</div>';
+            }
+          }, 300);
+        } else {
+          performerListContainer.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type to search performers</div>';
+        }
+      });
+    }
+    const currentFilter = sessionStorage.getItem("galleryTagFilter");
+    if (currentFilter) {
+      try {
+        const filterObj = JSON.parse(currentFilter);
+        includedTags = filterObj.includedTags || [];
+        excludedTags = filterObj.excludedTags || [];
+        includedPerformers = filterObj.includedPerformers || [];
+        excludedPerformers = filterObj.excludedPerformers || [];
+        setTimeout(() => {
+          if (includedSearchInput.value.trim().length >= 1) {
+            includedSearchInput.dispatchEvent(new Event("input"));
+          }
+          if (excludedSearchInput.value.trim().length >= 1) {
+            excludedSearchInput.dispatchEvent(new Event("input"));
+          }
+          if (includedPerformerSearchInput.value.trim().length >= 1) {
+            includedPerformerSearchInput.dispatchEvent(new Event("input"));
+          }
+          if (excludedPerformerSearchInput.value.trim().length >= 1) {
+            excludedPerformerSearchInput.dispatchEvent(new Event("input"));
+          }
+        }, 100);
+      } catch (e) {
+        console.error("Error parsing current filter:", e);
+      }
+    }
+    setupTagSearch(includedSearchInput, includedTagList, includedTags, "included");
+    setupTagSearch(excludedSearchInput, excludedTagList, excludedTags, "excluded");
+    setupPerformerSearch(includedPerformerSearchInput, includedPerformerList, includedPerformers, "included");
+    setupPerformerSearch(excludedPerformerSearchInput, excludedPerformerList, excludedPerformers, "excluded");
+    if (includedSearchInput.value.trim().length >= 1) {
+      includedSearchInput.dispatchEvent(new Event("input"));
+    } else {
+      includedTagList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
+    }
+    if (excludedSearchInput.value.trim().length >= 1) {
+      excludedSearchInput.dispatchEvent(new Event("input"));
+    } else {
+      excludedTagList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
+    }
+    if (includedPerformerSearchInput.value.trim().length >= 1) {
+      includedPerformerSearchInput.dispatchEvent(new Event("input"));
+    } else {
+      includedPerformerList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
+    }
+    if (excludedPerformerSearchInput.value.trim().length >= 1) {
+      excludedPerformerSearchInput.dispatchEvent(new Event("input"));
+    } else {
+      excludedPerformerList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
+    }
+    const applyBtn = modal.querySelector(".apply-tag-filter");
+    applyBtn.addEventListener("click", () => {
+      if (includedTags.length > 0 || excludedTags.length > 0 || includedPerformers.length > 0 || excludedPerformers.length > 0) {
+        applyGalleryTagFilter(includedTags, excludedTags, includedPerformers, excludedPerformers);
+      } else {
+        clearGalleryTagFilter();
+      }
+      modal.remove();
+    });
+    const clearBtn = modal.querySelector(".clear-tag-filter");
+    clearBtn.addEventListener("click", () => {
+      includedTags = [];
+      excludedTags = [];
+      includedPerformers = [];
+      excludedPerformers = [];
+      includedSearchInput.value = "";
+      excludedSearchInput.value = "";
+      includedPerformerSearchInput.value = "";
+      excludedPerformerSearchInput.value = "";
+      includedTagList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
+      excludedTagList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
+      includedPerformerList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
+      excludedPerformerList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
+      clearGalleryTagFilter();
+      window.dispatchEvent(new CustomEvent("updateDeckContent", {
+        detail: { tagIds: [] }
+      }));
+    });
+  }
+  function renderPerformerList(performers, container, selectedPerformers, type) {
+    if (!performers || performers.length === 0) {
+      container.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">No performers found</div>';
+      return;
+    }
+    container.innerHTML = performers.map((performer) => `  
+        <div class="performer-item" style="padding: 8px; cursor: pointer; display: flex; align-items: center; border-radius: 4px; margin-bottom: 2px; ${selectedPerformers.includes(performer.id) ? "background: #444;" : "background: #333;"}">
+            <input type="checkbox" id="performer-${type}-${performer.id}" ${selectedPerformers.includes(performer.id) ? "checked" : ""} style="margin-right: 8px; cursor: pointer;">
+            <label for="performer-${type}-${performer.id}" style="cursor: pointer; flex-grow: 1;">${performer.name}</label>
+        </div>
+    `).join("");
+    container.querySelectorAll(".performer-item").forEach((item, index) => {
+      const checkbox = item.querySelector('input[type="checkbox"]');
+      const performerId = performers[index].id;
+      item.addEventListener("click", (e) => {
+        if (e.target !== checkbox) {
+          checkbox.checked = !checkbox.checked;
+          updateSelectedPerformers(selectedPerformers, performerId, checkbox.checked);
+        }
+      });
+      checkbox.addEventListener("change", (e) => {
+        updateSelectedPerformers(selectedPerformers, performerId, e.target.checked);
+      });
+    });
+  }
+  function updateSelectedPerformers(selectedPerformers, performerId, isSelected) {
+    if (isSelected) {
+      if (!selectedPerformers.includes(performerId)) {
+        selectedPerformers.push(performerId);
+      }
+    } else {
+      const idx = selectedPerformers.indexOf(performerId);
+      if (idx > -1) {
+        selectedPerformers.splice(idx, 1);
+      }
+    }
+  }
+  function renderTagList(tags, container, selectedTags, type) {
+    if (!tags || tags.length === 0) {
+      container.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">No tags found</div>';
+      return;
+    }
+    container.innerHTML = tags.map((tag) => `
+        <div class="tag-item" style="padding: 8px; cursor: pointer; display: flex; align-items: center; border-radius: 4px; margin-bottom: 2px; ${selectedTags.includes(tag.id) ? "background: #444;" : "background: #333;"}">
+            <input type="checkbox" id="tag-${type}-${tag.id}" ${selectedTags.includes(tag.id) ? "checked" : ""} style="margin-right: 8px; cursor: pointer;">
+            <label for="tag-${type}-${tag.id}" style="cursor: pointer; flex-grow: 1;">${tag.name}</label>
+        </div>
+    `).join("");
+    container.querySelectorAll(".tag-item").forEach((item, index) => {
+      const checkbox = item.querySelector('input[type="checkbox"]');
+      const tagId = tags[index].id;
+      item.addEventListener("click", (e) => {
+        if (e.target !== checkbox) {
+          checkbox.checked = !checkbox.checked;
+          updateSelectedTags(selectedTags, tagId, checkbox.checked);
+        }
+      });
+      checkbox.addEventListener("change", (e) => {
+        updateSelectedTags(selectedTags, tagId, e.target.checked);
+      });
+    });
+  }
+  function updateSelectedTags(selectedTags, tagId, isSelected) {
+    if (isSelected) {
+      if (!selectedTags.includes(tagId)) {
+        selectedTags.push(tagId);
+      }
+    } else {
+      const idx = selectedTags.indexOf(tagId);
+      if (idx > -1) {
+        selectedTags.splice(idx, 1);
+      }
+    }
+  }
+  async function updateContentViewWithFilter() {
+    const tagFilter = sessionStorage.getItem("galleryTagFilter");
+    let tagIds = [];
+    if (tagFilter) {
+      try {
+        tagIds = JSON.parse(tagFilter);
+      } catch (e) {
+        console.error("Error parsing tag filter:", e);
+      }
+    }
+    window.dispatchEvent(new CustomEvent("updateDeckContent", {
+      detail: { tagIds }
+    }));
+  }
+  function getCurrentFilterTags() {
+    const tagFilter = sessionStorage.getItem("galleryTagFilter");
+    if (tagFilter) {
+      try {
+        const filterObj = JSON.parse(tagFilter);
+        return {
+          includedTags: filterObj.includedTags || [],
+          excludedTags: filterObj.excludedTags || [],
+          includedPerformers: filterObj.includedPerformers || [],
+          excludedPerformers: filterObj.excludedPerformers || []
+        };
+      } catch (e) {
+        console.error("Error parsing tag filter:", e);
+        return { includedTags: [], excludedTags: [], includedPerformers: [], excludedPerformers: [] };
+      }
+    }
+    return { includedTags: [], excludedTags: [], includedPerformers: [], excludedPerformers: [] };
+  }
+  function setupEventHandlers(container, callbacks = {}) {
+    const { closeDeck: closeDeck3, startAutoPlay: startAutoPlay2, stopAutoPlay: stopAutoPlay2, loadNextChunk: loadNextChunk2 } = callbacks;
     setDeckActive(true);
-    const closeBtn = container2.querySelector(".image-deck-close");
+    const filterChangeListener = async (e) => {
+      console.log("[Image Deck] Filter changed, updating content");
+      storedContextInfo = detectContext2();
+      await updateContentViewWithFilter();
+    };
+    window.addEventListener("galleryTagFilterChanged", filterChangeListener);
+    storeElementData(container, { filterChangeListener });
+    const keyboardHandler = handleKeyboard;
+    const closeBtn = container.querySelector(".image-deck-close");
     if (closeBtn) {
-      closeBtn.addEventListener("click", closeDeck);
+      eventManager.add(closeBtn, "click", closeDeck3);
     }
-    const fullscreenBtn = container2.querySelector(".image-deck-fullscreen");
+    const fullscreenBtn = container.querySelector(".image-deck-fullscreen");
     if (fullscreenBtn) {
-      fullscreenBtn.addEventListener("click", toggleFullscreen);
+      eventManager.add(fullscreenBtn, "click", toggleFullscreen);
     }
-    const metadataCloseBtn = container2.querySelector(".image-deck-metadata-close");
+    const metadataCloseBtn = container.querySelector(".image-deck-metadata-close");
     if (metadataCloseBtn) {
-      metadataCloseBtn.addEventListener("click", closeMetadataModal);
+      eventManager.add(metadataCloseBtn, "click", () => {
+        closeMetadataModal();
+        updateControlVisibility(true);
+      });
     }
-    const controlButtons = container2.querySelectorAll(".image-deck-control-btn");
+    const galleryFilterBtn = container.querySelector(".gallery-filter-btn");
+    if (galleryFilterBtn) {
+      eventManager.add(galleryFilterBtn, "click", showGalleryTagFilter);
+    }
+    const controlButtons = container.querySelectorAll(".image-deck-control-btn");
     controlButtons.forEach((button) => {
-      button.addEventListener("click", (e) => {
+      eventManager.add(button, "click", (e) => {
         const action = button.dataset.action;
-        const swiper = window.currentSwiperInstance;
+        const swiper2 = state.getSwiper();
+        if (button.classList.contains("gallery-filter-btn")) {
+          showGalleryTagFilter();
+          return;
+        }
         if (!action) return;
         switch (action) {
           case "prev":
-            if (swiper) {
-              swiper.slidePrev();
+            if (swiper2) {
+              swiper2.slidePrev();
             } else {
-              console.error("[Image Deck] Prev failed: window.currentSwiperInstance is not defined");
+              console.error("[Image Deck] Prev failed: swiper is not defined");
             }
             break;
           case "next":
-            if (swiper) {
-              swiper.slideNext();
+            if (swiper2) {
+              swiper2.slideNext();
               setTimeout(() => {
-                loadNextChunk();
+                loadNextChunk2();
               }, 100);
             } else {
-              console.error("[Image Deck] Next failed: window.currentSwiperInstance is not defined");
+              console.error("[Image Deck] Next failed: swiper is not defined");
             }
             break;
           case "play":
             const playBtn = document.querySelector('[data-action="play"]');
             const isAutoPlaying2 = playBtn && playBtn.classList.contains("active");
             if (isAutoPlaying2) {
-              stopAutoPlay();
+              stopAutoPlay2();
             } else {
-              startAutoPlay();
+              startAutoPlay2();
             }
             break;
           case "info":
+            updateControlVisibility(false);
             openMetadataModal();
             break;
           case "zoom-in":
-            if (swiper && swiper.zoom && !isCurrentSlideGallery()) {
-              swiper.zoom.in();
+            if (swiper2 && swiper2.zoom && !isCurrentSlideGallery()) {
+              swiper2.zoom.in();
             }
             break;
           case "zoom-out":
-            if (swiper && swiper.zoom && !isCurrentSlideGallery()) {
-              swiper.zoom.out();
+            if (swiper2 && swiper2.zoom && !isCurrentSlideGallery()) {
+              swiper2.zoom.out();
             }
             break;
           case "next-chunk":
-            loadNextChunk(container2);
+            loadNextChunk2(container);
             break;
           default:
             console.log("[Image Deck] Unknown action:", action);
         }
       });
     });
-    if (window.currentSwiperInstance) {
-      window.currentSwiperInstance.on("slideChangeTransitionEnd", function() {
-        updateGalleryStateClass();
+    const removeTagButtons = container.querySelectorAll(".remove-filter-tag");
+    removeTagButtons.forEach((button) => {
+      const newButton = button.cloneNode(true);
+      button.parentNode.replaceChild(newButton, button);
+      eventManager.add(newButton, "click", async (e) => {
+        e.stopPropagation();
+        const tagId = newButton.dataset.tagId;
+        const performerId = newButton.dataset.performerId;
+        const currentTags = getCurrentFilterTags();
+        let newIncludedTags = currentTags.includedTags.filter((id) => id !== tagId);
+        let newExcludedTags = currentTags.excludedTags.filter((id) => id !== tagId);
+        let newIncludedPerformers = currentTags.includedPerformers.filter((id) => id !== performerId);
+        let newExcludedPerformers = currentTags.excludedPerformers.filter((id) => id !== performerId);
+        if (newIncludedTags.length > 0 || newExcludedTags.length > 0 || newIncludedPerformers.length > 0 || newExcludedPerformers.length > 0) {
+          const filterObj = {
+            includedTags: newIncludedTags,
+            excludedTags: newExcludedTags,
+            includedPerformers: newIncludedPerformers,
+            excludedPerformers: newExcludedPerformers
+          };
+          sessionStorage.setItem("galleryTagFilter", JSON.stringify(filterObj));
+        } else {
+          sessionStorage.removeItem("galleryTagFilter");
+        }
+        window.dispatchEvent(new CustomEvent("galleryTagFilterChanged"));
       });
+    });
+    const swiper = state.getSwiper();
+    if (swiper) {
+      const slideChangeListener = function() {
+        updateGalleryStateClass();
+        updateControlVisibility(true);
+      };
+      swiper.on("slideChangeTransitionEnd", slideChangeListener);
+      storeElementData(container, { slideChangeListener });
       setTimeout(() => {
         updateGalleryStateClass();
       }, 0);
     }
-    keyboardHandler = handleKeyboard;
-    document.addEventListener("keydown", handleKeyboard, true);
-    setupSwipeGestures(container2);
-    setupMouseWheel(container2);
+    const keyboardHandlerWithActions = (e) => handleKeyboard(e, callbacks);
+    eventManager.add(document, "keydown", keyboardHandlerWithActions, true);
+    setupSwipeGestures(container, eventManager);
+    setupMouseWheel(container, eventManager);
   }
-  function setupSwipeGestures(container2) {
+  function setupSwipeGestures(container, eventManager2) {
     let touchStartY = 0;
     let touchStartX = 0;
     let touchDeltaY = 0;
@@ -1244,65 +2839,70 @@
     let lastTouchTime = 0;
     let lastTouchX = 0;
     let lastTouchY = 0;
-    const swiperEl = container2.querySelector(".image-deck-swiper");
+    let isProcessingTouch = false;
+    const swiperEl = container.querySelector(".image-deck-swiper");
     if (!swiperEl) return;
-    swiperEl.addEventListener("touchstart", (e) => {
-      if (e.touches.length > 1) return;
-      if (e.target.closest(".image-deck-metadata-modal")) return;
-      const currentTime = (/* @__PURE__ */ new Date()).getTime();
-      const touchX = e.touches[0].clientX;
-      const touchY = e.touches[0].clientY;
-      if (currentTime - lastTouchTime < 300 && Math.abs(touchX - lastTouchX) < 20 && Math.abs(touchY - lastTouchY) < 20) {
-        handleDoubleTapZoom(e, container2);
-        e.preventDefault();
-        return;
-      }
-      lastTouchTime = currentTime;
-      lastTouchX = touchX;
-      lastTouchY = touchY;
-      touchStartY = e.touches[0].clientY;
-      touchStartX = e.touches[0].clientX;
-      touchDeltaY = 0;
-      touchDeltaX = 0;
-    }, { passive: false });
-    swiperEl.addEventListener("touchmove", (e) => {
-      if (e.touches.length > 1) {
+    const touchHandler = {
+      handleTouchStart: (e) => {
+        if (isProcessingTouch || e.touches.length > 1) return;
+        if (e.target.closest(".image-deck-metadata-modal")) return;
+        const currentTime = (/* @__PURE__ */ new Date()).getTime();
+        const touchX = e.touches[0].clientX;
+        const touchY = e.touches[0].clientY;
+        if (currentTime - lastTouchTime < 300 && Math.abs(touchX - lastTouchX) < 20 && Math.abs(touchY - lastTouchY) < 20) {
+          handleDoubleTapZoom(e, container);
+          e.preventDefault();
+          isProcessingTouch = true;
+          return;
+        }
+        lastTouchTime = currentTime;
+        lastTouchX = touchX;
+        lastTouchY = touchY;
+        touchStartY = touchY;
+        touchStartX = touchX;
+        touchDeltaY = 0;
+        touchDeltaX = 0;
+        isProcessingTouch = false;
+      },
+      handleTouchMove: (e) => {
+        if (isProcessingTouch || e.touches.length > 1) return;
+        if (e.target.closest(".image-deck-metadata-modal")) return;
+        const currentY = e.touches[0].clientY;
+        const currentX = e.touches[0].clientX;
+        touchDeltaY = currentY - touchStartY;
+        touchDeltaX = Math.abs(currentX - touchStartX);
+        const isInFullscreen = !!document.fullscreenElement;
+        if (!isInFullscreen && touchDeltaY > 30 && touchDeltaX < 50) {
+          if (rafId) cancelAnimationFrame(rafId);
+          rafId = requestAnimationFrame(() => {
+            container.style.transform = `translateY(${touchDeltaY * 0.3}px)`;
+            container.style.opacity = Math.max(0.3, 1 - touchDeltaY / 500);
+          });
+          isProcessingTouch = true;
+        }
+      },
+      handleTouchEnd: (e) => {
         if (rafId) cancelAnimationFrame(rafId);
-        container2.style.transform = "";
-        container2.style.opacity = "";
-        return;
+        const isInFullscreen = !!document.fullscreenElement;
+        if (!isInFullscreen && touchDeltaY > 150 && touchDeltaX < 50) {
+          closeDeck();
+        } else {
+          requestAnimationFrame(() => {
+            container.style.transform = "";
+            container.style.opacity = "";
+          });
+        }
+        touchDeltaY = 0;
+        touchDeltaX = 0;
+        isProcessingTouch = false;
       }
-      if (e.target.closest(".image-deck-metadata-modal")) return;
-      const currentY = e.touches[0].clientY;
-      const currentX = e.touches[0].clientX;
-      touchDeltaY = currentY - touchStartY;
-      touchDeltaX = Math.abs(currentX - touchStartX);
-      const isInFullscreen = !!document.fullscreenElement;
-      if (!isInFullscreen && touchDeltaY > 30 && touchDeltaX < 50) {
-        if (rafId) cancelAnimationFrame(rafId);
-        rafId = requestAnimationFrame(() => {
-          container2.style.transform = `translateY(${touchDeltaY * 0.3}px)`;
-          container2.style.opacity = Math.max(0.3, 1 - touchDeltaY / 500);
-        });
-      }
-    }, { passive: true });
-    swiperEl.addEventListener("touchend", (e) => {
-      if (rafId) cancelAnimationFrame(rafId);
-      const isInFullscreen = !!document.fullscreenElement;
-      if (!isInFullscreen && touchDeltaY > 150 && touchDeltaX < 50) {
-        closeDeck();
-      } else {
-        requestAnimationFrame(() => {
-          container2.style.transform = "";
-          container2.style.opacity = "";
-        });
-      }
-      touchDeltaY = 0;
-      touchDeltaX = 0;
-    }, { passive: true });
+    };
+    eventManager2.add(swiperEl, "touchstart", touchHandler.handleTouchStart, { passive: false });
+    eventManager2.add(swiperEl, "touchmove", touchHandler.handleTouchMove, { passive: true });
+    eventManager2.add(swiperEl, "touchend", touchHandler.handleTouchEnd, { passive: true });
   }
-  function handleDoubleTapZoom(event, container2) {
-    const swiper = window.currentSwiperInstance;
+  function handleDoubleTapZoom(event, container) {
+    const swiper = state.getSwiper();
     if (!swiper || !swiper.zoom) return;
     if (isCurrentSlideGallery()) {
       console.log("[Image Deck] Double tap ignored - gallery slide");
@@ -1320,11 +2920,11 @@
     }
     event.preventDefault();
   }
-  function setupMouseWheel(container2) {
-    const swiperEl = container2.querySelector(".image-deck-swiper");
+  function setupMouseWheel(container, eventManager2) {
+    const swiperEl = container.querySelector(".image-deck-swiper");
     if (!swiperEl) return;
-    swiperEl.addEventListener("wheel", (e) => {
-      const swiper = window.currentSwiperInstance;
+    eventManager2.add(swiperEl, "wheel", (e) => {
+      const swiper = state.getSwiper();
       if (!swiper) return;
       e.preventDefault();
       if (swiper.wheeling) return;
@@ -1342,13 +2942,26 @@
   function setDeckActive(active) {
     isDeckActive = active;
   }
-  function handleKeyboard(e) {
+  function handleKeyboard(e, actions = {}) {
+    const { closeDeck: closeDeck3, startAutoPlay: startAutoPlay2, stopAutoPlay: stopAutoPlay2 } = actions;
     if (!isDeckActive) return;
+    const formElements = ["INPUT", "TEXTAREA", "SELECT"];
+    if (formElements.includes(e.target.tagName)) {
+      if (e.key === " " && e.target.tagName === "INPUT") {
+        e.stopPropagation();
+        return;
+      }
+      return;
+    }
+    const inModalInput = (e.target.closest(".gallery-tag-filter-modal") || e.target.closest(".image-deck-metadata-modal")) && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA");
+    if (inModalInput && e.key === " ") {
+      return;
+    }
     if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", " ", "Escape", "+", "-", "0"].includes(e.key)) {
       e.preventDefault();
       e.stopPropagation();
     }
-    const swiper = window.currentSwiperInstance;
+    const swiper = state.getSwiper();
     if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") {
       if (e.key === "Escape") {
         closeMetadataModal();
@@ -1361,8 +2974,8 @@
         const modal = document.querySelector(".image-deck-metadata-modal");
         if (modal && modal.classList.contains("active")) {
           closeMetadataModal();
-        } else {
-          closeDeck();
+        } else if (closeDeck3) {
+          closeDeck3();
         }
         break;
       case " ":
@@ -1370,9 +2983,9 @@
         e.stopPropagation();
         const playBtn = document.querySelector('[data-action="play"]');
         if (playBtn && playBtn.classList.contains("active")) {
-          stopAutoPlay();
+          if (stopAutoPlay2) stopAutoPlay2();
         } else {
-          startAutoPlay();
+          if (startAutoPlay2) startAutoPlay2();
         }
         break;
       case "i":
@@ -1383,10 +2996,10 @@
         if (metadataModal && metadataModal.classList.contains("active")) {
           closeMetadataModal();
         } else {
+          updateControlVisibility(false);
           openMetadataModal();
         }
         break;
-      // ZOOM CONTROLS
       case "+":
       case "=":
         e.preventDefault();
@@ -1407,7 +3020,6 @@
           swiper.zoom.reset();
         }
         break;
-      // ARROW KEY SUPPORT
       case "ArrowLeft":
         e.preventDefault();
         e.stopPropagation();
@@ -1421,13 +3033,9 @@
         if (swiper) {
           swiper.slideNext();
           setTimeout(() => {
-            if (window.currentSwiperInstance) {
-              const currentIndex = window.currentSwiperInstance.activeIndex;
-              const totalCurrentSlides = window.currentSwiperInstance.virtual ? window.currentSwiperInstance.virtual.slides.length : window.currentSwiperInstance.slides.length;
-              const totalPagesLocal = totalPages || 1;
-              if (currentIndex >= totalCurrentSlides - 3 && currentChunkPage < totalPagesLocal) {
-                loadNextChunk(container);
-              }
+            if (swiper) {
+              const currentIndex = swiper.activeIndex;
+              const totalCurrentSlides = swiper.virtual ? swiper.virtual.slides.length : swiper.slides.length;
             }
           }, 100);
         }
@@ -1435,85 +3043,452 @@
     }
   }
   function cleanupEventHandlers() {
-    if (keyboardHandler) {
-      document.removeEventListener("keydown", keyboardHandler, true);
-      keyboardHandler = null;
-    }
+    eventManager.removeAll();
     isDeckActive = false;
+    document.removeEventListener("keydown", handleKeyboard, true);
+    const swiper = state.getSwiper();
+    if (swiper) {
+      swiper.off("slideChangeTransitionEnd");
+    }
   }
-  var isDeckActive, keyboardHandler;
+  var elementData, EventHandlerManager, eventManager, isDeckActive, EventManager;
   var init_controls = __esm({
     "controls.js"() {
-      init_deck();
+      init_graphql();
       init_metadata();
+      init_utils();
+      init_state();
+      init_context();
+      elementData = /* @__PURE__ */ new WeakMap();
+      EventHandlerManager = class {
+        constructor() {
+          this.listeners = /* @__PURE__ */ new Map();
+        }
+        add(element, event, handler, options = false) {
+          const key = `${element.constructor.name}_${event}_${Math.random()}`;
+          element.addEventListener(event, handler, options);
+          if (!this.listeners.has(key)) {
+            this.listeners.set(key, { element, event, handler, options });
+          }
+          return key;
+        }
+        remove(key) {
+          if (this.listeners.has(key)) {
+            const { element, event, handler } = this.listeners.get(key);
+            element.removeEventListener(event, handler);
+            this.listeners.delete(key);
+          }
+        }
+        removeAll() {
+          for (const [key, { element, event, handler }] of this.listeners) {
+            element.removeEventListener(event, handler);
+          }
+          this.listeners.clear();
+        }
+      };
+      eventManager = new EventHandlerManager();
       isDeckActive = false;
-      keyboardHandler = null;
+      EventManager = class _EventManager {
+        static instance = new _EventManager();
+        constructor() {
+          this.handlers = /* @__PURE__ */ new Map();
+        }
+        static add(element, event, handler, options = false) {
+          const key = `${element.constructor.name}_${event}_${Date.now()}_${Math.random()}`;
+          element.addEventListener(event, handler, options);
+          this.instance.handlers.set(key, { element, event, handler, options });
+          return key;
+        }
+        static remove(key) {
+          if (this.instance.handlers.has(key)) {
+            const { element, event, handler } = this.instance.handlers.get(key);
+            element.removeEventListener(event, handler);
+            this.instance.handlers.delete(key);
+          }
+        }
+        static removeAll() {
+          for (const [key, { element, event, handler }] of this.instance.handlers) {
+            try {
+              element.removeEventListener(event, handler);
+            } catch (e) {
+              console.warn("Failed to remove event listener:", e);
+            }
+          }
+          this.instance.handlers.clear();
+        }
+      };
     }
   });
 
   // deck.js
   var deck_exports = {};
   __export(deck_exports, {
-    closeDeck: () => closeDeck,
+    closeDeck: () => closeDeck2,
     loadNextChunk: () => loadNextChunk,
     openDeck: () => openDeck,
     startAutoPlay: () => startAutoPlay,
     stopAutoPlay: () => stopAutoPlay
   });
+  function startPerformanceMonitoring() {
+    if (!isMobile) return;
+    let lastTime = performance.now();
+    const fpsThreshold = 30;
+    performanceMonitor = setInterval(() => {
+      const currentTime = performance.now();
+      const deltaTime = currentTime - lastTime;
+      const fps = 1e3 / deltaTime;
+      if (fps < fpsThreshold) {
+        frameDropCount++;
+        if (frameDropCount > 5) {
+          reduceVisualEffects();
+          frameDropCount = 0;
+        }
+      } else {
+        frameDropCount = Math.max(0, frameDropCount - 0.1);
+      }
+      lastTime = currentTime;
+    }, 1e3);
+  }
+  function reduceVisualEffects() {
+    const styles = document.getElementById("image-deck-dynamic-styles");
+    if (styles) {
+      styles.textContent += `
+            .swiper-slide img {
+                filter: none !important; /* Remove glow effects */
+            }
+            .image-deck-ambient {
+                display: none !important; /* Hide ambient background */
+            }
+        `;
+    }
+  }
+  function stopPerformanceMonitoring() {
+    if (performanceMonitor) {
+      clearInterval(performanceMonitor);
+      performanceMonitor = null;
+    }
+  }
+  function getCurrentFilterTags2() {
+    const tagFilter = sessionStorage.getItem("galleryTagFilter");
+    if (tagFilter) {
+      try {
+        const filterObj = JSON.parse(tagFilter);
+        return {
+          includedTags: filterObj.includedTags || filterObj.included || [],
+          excludedTags: filterObj.excludedTags || filterObj.excluded || [],
+          includedPerformers: filterObj.includedPerformers || [],
+          excludedPerformers: filterObj.excludedPerformers || []
+        };
+      } catch (e) {
+        console.error("[Image Deck] Error parsing tag filter:", e);
+        return { includedTags: [], excludedTags: [], includedPerformers: [], excludedPerformers: [] };
+      }
+    }
+    return { includedTags: [], excludedTags: [], includedPerformers: [], excludedPerformers: [] };
+  }
+  async function restoreFilterDisplayOnOpen(container) {
+    const currentTags = getCurrentFilterTags2();
+    if (currentTags.includedTags.length > 0 || currentTags.excludedTags.length > 0 || currentTags.includedPerformers.length > 0 || currentTags.excludedPerformers.length > 0) {
+      const allTagIds = [...currentTags.includedTags, ...currentTags.excludedTags];
+      const allPerformerIds = [...currentTags.includedPerformers, ...currentTags.excludedPerformers];
+      const tagNames = await getTagNames(allTagIds);
+      const performerNames = await getPerformerNames(allPerformerIds);
+      const filterDisplay = document.createElement("div");
+      filterDisplay.className = "image-deck-current-filters";
+      filterDisplay.style.cssText = "position: absolute; top: 60px; left: 20px; right: 20px; z-index: 10; display: flex; flex-wrap: wrap; gap: 5px;";
+      let filterHtml = '<span style="color: #ccc; font-size: 12px; background: rgba(0,0,0,0.5); padding: 2px 8px; border-radius: 10px;">FILTERED BY:</span>';
+      filterHtml += currentTags.includedTags.map((tagId) => {
+        const tagName = tagNames[tagId] || `Tag:${tagId}`;
+        return `
+                <span class="filter-tag-display" data-tag-id="${tagId}" style="color: white; font-size: 12px; background: rgba(46, 204, 113, 0.7); padding: 2px 8px; border-radius: 10px; display: flex; align-items: center;">
+                    \u2705 ${tagName}
+                    <button class="remove-filter-tag" data-tag-id="${tagId}" style="background: none; border: none; color: white; margin-left: 5px; cursor: pointer; font-size: 14px;">\xD7</button>
+                </span>`;
+      }).join("");
+      filterHtml += currentTags.excludedTags.map((tagId) => {
+        const tagName = tagNames[tagId] || `Tag:${tagId}`;
+        return `
+                <span class="filter-tag-display" data-tag-id="${tagId}" style="color: white; font-size: 12px; background: rgba(231, 76, 60, 0.7); padding: 2px 8px; border-radius: 10px; display: flex; align-items: center;">
+                    \u274C ${tagName}
+                    <button class="remove-filter-tag" data-tag-id="${tagId}" style="background: none; border: none; color: white; margin-left: 5px; cursor: pointer; font-size: 14px;">\xD7</button>
+                </span>`;
+      }).join("");
+      filterHtml += currentTags.includedPerformers.map((performerId) => {
+        const performerName = performerNames[performerId] || `Performer:${performerId}`;
+        return `
+                <span class="filter-tag-display" data-performer-id="${performerId}" style="color: white; font-size: 12px; background: rgba(233, 30, 99, 0.7); padding: 2px 8px; border-radius: 10px; display: flex; align-items: center;">
+                    \u2705 ${performerName}
+                    <button class="remove-filter-tag" data-performer-id="${performerId}" style="background: none; border: none; color: white; margin-left: 5px; cursor: pointer; font-size: 14px;">\xD7</button>
+                </span>`;
+      }).join("");
+      filterHtml += currentTags.excludedPerformers.map((performerId) => {
+        const performerName = performerNames[performerId] || `Performer:${performerId}`;
+        return `
+                <span class="filter-tag-display" data-performer-id="${performerId}" style="color: white; font-size: 12px; background: rgba(233, 30, 99, 0.7); padding: 2px 8px; border-radius: 10px; display: flex; align-items: center;">
+                    \u274C ${performerName}
+                    <button class="remove-filter-tag" data-performer-id="${performerId}" style="background: none; border: none; color: white; margin-left: 5px; cursor: pointer; font-size: 14px;">\xD7</button>
+                </span>`;
+      }).join("");
+      filterDisplay.innerHTML = filterHtml;
+      container.insertBefore(filterDisplay, container.querySelector(".image-deck-progress"));
+      setTimeout(() => {
+        filterDisplay.querySelectorAll(".remove-filter-tag").forEach((button) => {
+          button.addEventListener("click", async (e) => {
+            e.stopPropagation();
+            const tagId = button.dataset.tagId;
+            const performerId = button.dataset.performerId;
+            const currentTags2 = getCurrentFilterTags2();
+            let newIncludedTags = currentTags2.includedTags.filter((id) => id !== tagId);
+            let newExcludedTags = currentTags2.excludedTags.filter((id) => id !== tagId);
+            let newIncludedPerformers = currentTags2.includedPerformers.filter((id) => id !== performerId);
+            let newExcludedPerformers = currentTags2.excludedPerformers.filter((id) => id !== performerId);
+            if (newIncludedTags.length > 0 || newExcludedTags.length > 0 || newIncludedPerformers.length > 0 || newExcludedPerformers.length > 0) {
+              const filterObj = {
+                includedTags: newIncludedTags,
+                excludedTags: newExcludedTags,
+                includedPerformers: newIncludedPerformers,
+                excludedPerformers: newExcludedPerformers
+              };
+              sessionStorage.setItem("galleryTagFilter", JSON.stringify(filterObj));
+            } else {
+              sessionStorage.removeItem("galleryTagFilter");
+            }
+            window.dispatchEvent(new CustomEvent("galleryTagFilterChanged"));
+          });
+        });
+      }, 0);
+    }
+  }
+  async function getPerformerNames(performerIds) {
+    if (!performerIds || performerIds.length === 0) return {};
+    try {
+      const performerPromises = performerIds.map(async (performerId) => {
+        const query = `query FindPerformer($id: ID!) {
+                findPerformer(id: $id) {
+                    id
+                    name
+                }
+            }`;
+        const response = await fetch("/graphql", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            query,
+            variables: { id: performerId }
+          })
+        });
+        const data = await response.json();
+        return data?.data?.findPerformer;
+      });
+      const performerResults = await Promise.all(performerPromises);
+      const performerMap = {};
+      performerResults.forEach((performer) => {
+        if (performer) {
+          performerMap[performer.id] = performer.name;
+        }
+      });
+      return performerMap;
+    } catch (error) {
+      console.error("[Image Deck] Error fetching performer names:", error);
+      return {};
+    }
+  }
+  async function forceRefreshGalleryCovers() {
+    console.log("[Image Deck] Force refreshing content");
+    try {
+      const freshContext = detectContext2();
+      if (!freshContext) {
+        console.error("[Image Deck] Could not detect context for refresh");
+        return;
+      }
+      currentChunkPage = 1;
+      const result = await fetchContextImages(freshContext, 1, chunkSize);
+      console.log("[Image Deck] Fresh content result:", result);
+      if (result && result.images) {
+        currentImages = result.images;
+        window.currentImages = currentImages;
+        totalImageCount = result.totalCount || 0;
+        totalPages = result.totalPages || 1;
+        if (currentSwiper) {
+          console.log("[Image Deck] Rebuilding Swiper with fresh content");
+          const container = document.querySelector(".image-deck-container");
+          if (container) {
+            if (currentSwiper && typeof currentSwiper.destroy === "function") {
+              currentSwiper.destroy(true, true);
+            }
+            currentSwiper = null;
+            const swiperEl = container.querySelector(".swiper");
+            if (swiperEl) {
+              const wrapper = swiperEl.querySelector(".swiper-wrapper");
+              if (wrapper) {
+                wrapper.innerHTML = "";
+              }
+            }
+            currentSwiper = initSwiper(
+              container,
+              currentImages,
+              pluginConfig,
+              () => {
+                updateUI(container);
+                checkAndLoadNextChunk();
+              },
+              savePosition,
+              freshContext
+            );
+            window.currentSwiperInstance = currentSwiper;
+            setCurrentSwiper(currentSwiper);
+            setTimeout(() => {
+              if (currentSwiper) {
+                currentSwiper.update();
+                currentSwiper.slideTo(0, 0, false);
+              }
+            }, 50);
+            setTimeout(() => {
+              if (currentSwiper) {
+                currentSwiper.update();
+              }
+            }, 100);
+            updateUI(container);
+            await updateFilterDisplayInUI();
+            console.log("[Image Deck] Swiper rebuilt with", currentImages.length, "items");
+          }
+        }
+      }
+    } catch (error) {
+      console.error("[Image Deck] Error force refreshing content:", error);
+    }
+  }
   async function openDeck(targetImageId = null) {
     console.log("[Image Deck] Opening deck...", targetImageId);
     console.log("[Image Deck] Current URL:", window.location.pathname);
     try {
-      currentChunkPage2 = 1;
+      currentChunkPage = 1;
       chunkSize = 50;
       totalImageCount = 0;
-      totalPages2 = 0;
+      totalPages = 0;
       pluginConfig = await getPluginConfig();
       console.log("[Image Deck] Plugin config loaded:", pluginConfig);
       injectDynamicStyles(pluginConfig);
-      let detectedContext = detectContext();
-      const path = window.location.pathname;
-      if (path.match(/^\/performers\/\d+/) && !detectedContext) {
-        const performerMatch = path.match(/^\/performers\/(\d+)/);
-        if (performerMatch) {
-          const performerId = performerMatch[1];
-          const isImagesTab = path.includes("/images") || window.location.hash.includes("images") || document.querySelector(".nav-tabs .active")?.textContent?.includes("Images");
-          const isGalleriesTab = path.includes("/galleries") || window.location.hash.includes("galleries") || document.querySelector(".nav-tabs .active")?.textContent?.includes("Galleries");
-          const type = isGalleriesTab ? "galleries" : "images";
-          detectedContext = {
-            type,
-            id: performerId,
-            performerId,
-            isPerformerContext: true,
-            filter: {
-              performers: { value: [performerId], modifier: "INCLUDES" },
-              sortBy: "created_at",
-              sortDir: "desc"
-            }
-          };
-          const params = new URLSearchParams(window.location.search);
-          if (params.has("sortby")) {
-            detectedContext.filter.sortBy = params.get("sortby");
-          }
-          if (params.has("sortdir")) {
-            detectedContext.filter.sortDir = params.get("sortdir");
-          }
-        }
-      }
-      if (window.location.pathname === "/galleries" && !detectedContext?.isGalleryListing) {
+      let detectedContext = detectContext2();
+      const storedMode = sessionStorage.getItem("imageDeckMode");
+      if (detectedContext && detectedContext.type === "galleries" && storedMode === "image") {
+        detectedContext = {
+          type: "images",
+          isGeneralListing: true,
+          filter: detectedContext.filter || {},
+          hash: window.location.hash
+        };
+      } else if (detectedContext && (detectedContext.type === "images" || detectedContext.isGeneralListing) && storedMode === "gallery") {
         detectedContext = {
           type: "galleries",
           isGalleryListing: true,
-          filter: parseUrlFilters(window.location.search)
-          // This is the crucial part
+          filter: detectedContext.filter || {},
+          hash: window.location.hash
         };
       }
-      storedContextInfo = detectedContext;
+      const path = window.location.pathname;
+      const performerMatch = path.match(/^\/performers\/(\d+)(?:\/(galleries|images))?/);
+      if (performerMatch) {
+        const [, performerId, viewType] = performerMatch;
+        let type = "galleries";
+        if (viewType === "images" || storedMode === "image") {
+          type = "images";
+        } else if (viewType === "galleries" || storedMode === "gallery") {
+          type = "galleries";
+        }
+        const existingFilters = detectedContext?.filter || {};
+        if (!existingFilters.performers) {
+          existingFilters.performers = {
+            value: [performerId],
+            modifier: "INCLUDES"
+          };
+        }
+        if (!existingFilters.sortBy) existingFilters.sortBy = "created_at";
+        if (!existingFilters.sortDir) existingFilters.sortDir = "desc";
+        detectedContext = {
+          type,
+          id: performerId,
+          performerId,
+          isPerformerContext: true,
+          filter: existingFilters
+        };
+      }
+      if (!detectedContext) {
+        console.log("[Image Deck] No context detected, defaulting to galleries");
+        detectedContext = {
+          type: "galleries",
+          isGalleryListing: true,
+          filter: {
+            sortBy: "created_at",
+            sortDir: "desc"
+          }
+        };
+      }
+      const tagFilter = sessionStorage.getItem("galleryTagFilter");
+      if (tagFilter && detectedContext) {
+        try {
+          const filterObj = JSON.parse(tagFilter);
+          if (!detectedContext.filter) {
+            detectedContext.filter = {};
+          }
+          if (filterObj.includedTags && filterObj.includedTags.length > 0 || filterObj.excludedTags && filterObj.excludedTags.length > 0) {
+            if (filterObj.includedTags && filterObj.includedTags.length > 0) {
+              detectedContext.filter.tags = {
+                value: filterObj.includedTags,
+                modifier: "INCLUDES"
+              };
+            }
+            if (filterObj.excludedTags && filterObj.excludedTags.length > 0) {
+              if (detectedContext.filter.tags) {
+                detectedContext.filter.tags.excluded = filterObj.excludedTags;
+              } else {
+                detectedContext.filter.tags = {
+                  value: [],
+                  modifier: "INCLUDES",
+                  excluded: filterObj.excludedTags
+                };
+              }
+            }
+          }
+          if (filterObj.includedPerformers && filterObj.includedPerformers.length > 0 || filterObj.excludedPerformers && filterObj.excludedPerformers.length > 0) {
+            if (filterObj.includedPerformers && filterObj.includedPerformers.length > 0) {
+              detectedContext.filter.performers = {
+                value: filterObj.includedPerformers,
+                modifier: "INCLUDES"
+              };
+            }
+            if (filterObj.excludedPerformers && filterObj.excludedPerformers.length > 0) {
+              if (detectedContext.filter.performers) {
+                detectedContext.filter.performers.excluded = filterObj.excludedPerformers;
+              } else {
+                detectedContext.filter.performers = {
+                  value: [],
+                  modifier: "INCLUDES",
+                  excluded: filterObj.excludedPerformers
+                };
+              }
+            }
+          }
+        } catch (e) {
+          console.error("[Image Deck] Error applying stored tag filter:", e);
+        }
+      }
+      if (!detectedContext) {
+        console.log("[Image Deck] No context detected, defaulting to galleries");
+        detectedContext = {
+          type: "galleries",
+          isGalleryListing: true,
+          filter: {
+            sortBy: "created_at",
+            sortDir: "desc"
+          }
+        };
+      }
+      storedContextInfo2 = detectedContext;
       contextInfo = detectedContext;
       console.log("[Image Deck] Context assigned:", contextInfo);
       let imageResult;
-      const isListContext = contextInfo && (contextInfo.isSingleGallery || contextInfo.isGalleryListing || contextInfo.type === "images" || contextInfo.isFilteredView || contextInfo.isPerformerContext || // Add performer context
-      window.location.pathname.startsWith("/images"));
+      const isListContext = contextInfo && (contextInfo.isSingleGallery || contextInfo.isGalleryListing || contextInfo.type === "images" || contextInfo.isFilteredView || contextInfo.isPerformerContext || window.location.pathname.startsWith("/images"));
       if (targetImageId) {
         console.log("[Image Deck] Using visible images for target navigation");
         imageResult = getVisibleImages();
@@ -1527,26 +3502,28 @@
       if (Array.isArray(imageResult)) {
         currentImages = imageResult;
         totalImageCount = imageResult.length;
-        totalPages2 = 1;
-        currentChunkPage2 = 1;
+        totalPages = 1;
+        currentChunkPage = 1;
       } else if (imageResult) {
         currentImages = imageResult.images || [];
         totalImageCount = imageResult.totalCount || 0;
-        totalPages2 = imageResult.totalPages || 1;
-        currentChunkPage2 = imageResult.currentPage || 1;
+        totalPages = imageResult.totalPages || 1;
+        currentChunkPage = imageResult.currentPage || 1;
       }
-      console.log(`[Image Deck] Opening with ${currentImages.length} items (chunk 1 of ${totalPages2 || 1})`);
-      const container2 = createDeckUI();
+      console.log(`[Image Deck] Opening with ${currentImages.length} items (chunk 1 of ${totalPages || 1})`);
+      const container = await createDeckUI();
       document.body.classList.add("image-deck-open");
+      document.body.appendChild(container);
+      await new Promise((resolve) => requestAnimationFrame(resolve));
       requestAnimationFrame(() => {
-        container2.classList.add("active");
+        container.classList.add("active");
       });
       currentSwiper = initSwiper(
-        container2,
+        container,
         currentImages,
         pluginConfig,
         () => {
-          updateUI(container2);
+          updateUI(container);
           checkAndLoadNextChunk();
         },
         savePosition,
@@ -1557,17 +3534,44 @@
       setCurrentSwiper(currentSwiper);
       if (currentSwiper) {
         currentSwiper.on("zoomChange", (swiper, scale) => {
-          const topBar = container2.querySelector(".image-deck-topbar");
-          const controls = container2.querySelector(".image-deck-controls");
-          const speedIndicator = container2.querySelector(".image-deck-speed");
+          const topBar = container.querySelector(".image-deck-topbar");
+          const controlsWrapper = container.querySelector(".image-deck-controls-wrapper");
+          const speedIndicator = container.querySelector(".image-deck-speed");
+          const filterDisplay = container.querySelector(".image-deck-current-filters");
           if (scale > 1) {
-            if (topBar) topBar.style.opacity = "0";
-            if (controls) controls.style.opacity = "0";
-            if (speedIndicator) speedIndicator.style.opacity = "0";
+            if (topBar) {
+              topBar.style.opacity = "0";
+              topBar.style.pointerEvents = "none";
+            }
+            if (controlsWrapper) {
+              controlsWrapper.style.opacity = "0";
+              controlsWrapper.style.pointerEvents = "none";
+            }
+            if (speedIndicator) {
+              speedIndicator.style.opacity = "0";
+              speedIndicator.style.pointerEvents = "none";
+            }
+            if (filterDisplay) {
+              filterDisplay.style.opacity = "0";
+              filterDisplay.style.pointerEvents = "none";
+            }
           } else {
-            if (topBar) topBar.style.opacity = "1";
-            if (controls) controls.style.opacity = "1";
-            if (speedIndicator) speedIndicator.style.opacity = "1";
+            if (topBar) {
+              topBar.style.opacity = "1";
+              topBar.style.pointerEvents = "auto";
+            }
+            if (controlsWrapper) {
+              controlsWrapper.style.opacity = "1";
+              controlsWrapper.style.pointerEvents = "auto";
+            }
+            if (speedIndicator) {
+              speedIndicator.style.opacity = "1";
+              speedIndicator.style.pointerEvents = "auto";
+            }
+            if (filterDisplay) {
+              filterDisplay.style.opacity = "1";
+              filterDisplay.style.pointerEvents = "auto";
+            }
           }
         });
       }
@@ -1578,7 +3582,7 @@
           setTimeout(() => {
             if (currentSwiper) {
               currentSwiper.slideTo(targetIndex, 0);
-              updateUI(container2);
+              updateUI(container);
             }
           }, 100);
         } else {
@@ -1588,21 +3592,127 @@
       } else {
         restorePosition();
       }
-      updateUI(container2);
+      updateUI(container);
+      await restoreFilterDisplayOnOpen(container);
       Promise.resolve().then(() => (init_controls(), controls_exports)).then((module) => {
-        module.setupEventHandlers(container2);
+        module.setupEventHandlers(container, {
+          closeDeck: closeDeck2,
+          startAutoPlay,
+          stopAutoPlay,
+          loadNextChunk
+        });
       });
+      const filterUpdateListener = (e) => {
+        console.log("[Image Deck] Received updateDeckContent event:", e.detail);
+        setTimeout(async () => {
+          await forceRefreshGalleryCovers();
+          const container2 = document.querySelector(".image-deck-container");
+          if (container2) {
+            updateUI(container2);
+            await updateFilterDisplayInUI();
+            if (currentSwiper) {
+              currentSwiper.on("zoomChange", (swiper, scale) => {
+                const topBar = container2.querySelector(".image-deck-topbar");
+                const controlsWrapper = container2.querySelector(".image-deck-controls-wrapper");
+                const speedIndicator = container2.querySelector(".image-deck-speed");
+                const filterDisplay = container2.querySelector(".image-deck-current-filters");
+                if (scale > 1) {
+                  if (topBar) {
+                    topBar.style.opacity = "0";
+                    topBar.style.pointerEvents = "none";
+                  }
+                  if (controlsWrapper) {
+                    controlsWrapper.style.opacity = "0";
+                    controlsWrapper.style.pointerEvents = "none";
+                  }
+                  if (speedIndicator) {
+                    speedIndicator.style.opacity = "0";
+                    speedIndicator.style.pointerEvents = "none";
+                  }
+                  if (filterDisplay) {
+                    filterDisplay.style.opacity = "0";
+                    filterDisplay.style.pointerEvents = "none";
+                  }
+                } else {
+                  if (topBar) {
+                    topBar.style.opacity = "1";
+                    topBar.style.pointerEvents = "auto";
+                  }
+                  if (controlsWrapper) {
+                    controlsWrapper.style.opacity = "1";
+                    controlsWrapper.style.pointerEvents = "auto";
+                  }
+                  if (speedIndicator) {
+                    speedIndicator.style.opacity = "1";
+                    speedIndicator.style.pointerEvents = "auto";
+                  }
+                  if (filterDisplay) {
+                    filterDisplay.style.opacity = "1";
+                    filterDisplay.style.pointerEvents = "auto";
+                  }
+                }
+              });
+            }
+          }
+        }, 100);
+      };
+      window.addEventListener("updateDeckContent", filterUpdateListener);
+      cleanupFunctions.push(() => {
+        window.removeEventListener("updateDeckContent", filterUpdateListener);
+      });
+      startPerformanceMonitoring();
     } catch (error) {
       console.error("[Image Deck] Error opening deck:", error);
       alert("Error opening Image Deck: " + error.message);
     }
   }
-  function createDeckUI() {
+  async function getTagNames(tagIds) {
+    if (!tagIds || tagIds.length === 0) return {};
+    try {
+      const tagPromises = tagIds.map(async (tagId) => {
+        const query = `query FindTag($id: ID!) {
+                findTag(id: $id) {
+                    id
+                    name
+                }
+            }`;
+        const response = await fetch("/graphql", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            query,
+            variables: { id: tagId }
+          })
+        });
+        const data = await response.json();
+        return data?.data?.findTag;
+      });
+      const tagResults = await Promise.all(tagPromises);
+      const tagMap = {};
+      tagResults.forEach((tag) => {
+        if (tag) {
+          tagMap[tag.id] = tag.name;
+        }
+      });
+      return tagMap;
+    } catch (error) {
+      console.error("[Image Deck] Error fetching tag names:", error);
+      return {};
+    }
+  }
+  async function createDeckUI() {
     const existing = document.querySelector(".image-deck-container");
     if (existing) existing.remove();
-    const container2 = document.createElement("div");
-    container2.className = `image-deck-container${isMobile ? " mobile-optimized" : ""}`;
-    container2.innerHTML = `
+    const container = document.createElement("div");
+    container.className = `image-deck-container${isMobile ? " mobile-optimized" : ""}`;
+    if (isMobile) {
+      container.classList.add("mobile-performance-mode");
+    }
+    const currentTags = getCurrentFilterTags2();
+    let filterDisplay = "";
+    if (currentTags.includedTags && (currentTags.includedTags.length > 0 || currentTags.excludedTags.length > 0 || currentTags.includedPerformers.length > 0 || currentTags.excludedPerformers.length > 0)) {
+    }
+    container.innerHTML = `
         <div class="image-deck-ambient"></div>
         <div class="image-deck-topbar">
             <div class="image-deck-counter"></div>
@@ -1611,6 +3721,7 @@
                 <button class="image-deck-close">\u2715</button>
             </div>
         </div>
+        ${filterDisplay}
         <div class="image-deck-progress"></div>
         <div class="image-deck-loading"></div>
         <div class="image-deck-swiper swiper">
@@ -1627,9 +3738,11 @@
                 <button class="image-deck-control-btn" data-action="next">\u25B6</button>
                 <button class="image-deck-control-btn image-deck-info-btn" data-action="info" title="Image Info (I)">\u2139</button>
                 <button class="image-deck-control-btn" data-action="next-chunk" title="Load Next Chunk">\u23ED\uFE0F</button>
+                <!-- Gallery filter button only appears in deck viewer -->
+                <button class="image-deck-control-btn gallery-filter-btn" title="Filter Galleries by Tag">\u2630</button>
             </div>
         </div>
-        <div class="image-deck-speed">Speed: ${pluginConfig.autoPlayInterval}ms</div>
+        <div class="image-deck-speed">Speed: ${pluginConfig?.autoPlayInterval || 3e3}ms</div>
         <div class="image-deck-metadata-modal">
             <div class="image-deck-metadata-content">
                 <div class="image-deck-metadata-header">
@@ -1640,13 +3753,188 @@
             </div>
         </div>
     `;
-    document.body.appendChild(container2);
-    return container2;
+    if (currentTags.includedTags && (currentTags.includedTags.length > 0 || currentTags.excludedTags.length > 0 || currentTags.includedPerformers.length > 0 || currentTags.excludedPerformers.length > 0)) {
+      setTimeout(() => {
+        const removeButtons = container.querySelectorAll(".remove-filter-tag");
+        removeButtons.forEach((button) => {
+          button.addEventListener("click", async (e) => {
+            e.stopPropagation();
+            const tagId = button.dataset.tagId;
+            const performerId = button.dataset.performerId;
+            const currentTags2 = getCurrentFilterTags2();
+            let newIncludedTags = currentTags2.includedTags.filter((id) => id !== tagId);
+            let newExcludedTags = currentTags2.excludedTags.filter((id) => id !== tagId);
+            let newIncludedPerformers = currentTags2.includedPerformers.filter((id) => id !== performerId);
+            let newExcludedPerformers = currentTags2.excludedPerformers.filter((id) => id !== performerId);
+            if (newIncludedTags.length > 0 || newExcludedTags.length > 0 || newIncludedPerformers.length > 0 || newExcludedPerformers.length > 0) {
+              const filterObj = {
+                includedTags: newIncludedTags,
+                excludedTags: newExcludedTags,
+                includedPerformers: newIncludedPerformers,
+                excludedPerformers: newExcludedPerformers
+              };
+              sessionStorage.setItem("galleryTagFilter", JSON.stringify(filterObj));
+            } else {
+              sessionStorage.removeItem("galleryTagFilter");
+            }
+            window.dispatchEvent(new CustomEvent("galleryTagFilterChanged"));
+          });
+        });
+      }, 0);
+    }
+    return container;
   }
-  function updateUI(container2) {
+  async function updateFilterDisplayInUI() {
+    const container = document.querySelector(".image-deck-container");
+    if (!container) return;
+    const existingFilterDisplay = container.querySelector(".image-deck-current-filters");
+    if (existingFilterDisplay) {
+      existingFilterDisplay.remove();
+    }
+    const currentTags = getCurrentFilterTags2();
+    if (currentTags.includedTags.length > 0 || currentTags.excludedTags.length > 0 || currentTags.includedPerformers.length > 0 || currentTags.excludedPerformers.length > 0) {
+      const allTagIds = [...currentTags.includedTags, ...currentTags.excludedTags];
+      const allPerformerIds = [...currentTags.includedPerformers, ...currentTags.excludedPerformers];
+      const [tagNames, performerNames] = await Promise.all([
+        getTagNames(allTagIds),
+        getPerformerNames(allPerformerIds)
+      ]);
+      const filterDisplay = document.createElement("div");
+      filterDisplay.className = "image-deck-current-filters";
+      filterDisplay.style.cssText = "position: absolute; top: 60px; left: 20px; right: 20px; z-index: 10; display: flex; flex-wrap: wrap; gap: 5px;";
+      let filterHtml = '<span style="color: #ccc; font-size: 12px; background: rgba(0,0,0,0.5); padding: 2px 8px; border-radius: 10px;">FILTERED BY:</span>';
+      filterHtml += currentTags.includedTags.map((tagId) => {
+        const tagName = tagNames[tagId] || `Tag:${tagId}`;
+        return `
+                <span class="filter-tag-display" data-tag-id="${tagId}" style="color: white; font-size: 12px; background: rgba(46, 204, 113, 0.7); padding: 2px 8px; border-radius: 10px; display: flex; align-items: center;">
+                    \u2705 ${tagName}
+                    <button class="remove-filter-tag" data-tag-id="${tagId}" style="background: none; border: none; color: white; margin-left: 5px; cursor: pointer; font-size: 14px;">\xD7</button>
+                </span>`;
+      }).join("");
+      filterHtml += currentTags.excludedTags.map((tagId) => {
+        const tagName = tagNames[tagId] || `Tag:${tagId}`;
+        return `
+                <span class="filter-tag-display" data-tag-id="${tagId}" style="color: white; font-size: 12px; background: rgba(231, 76, 60, 0.7); padding: 2px 8px; border-radius: 10px; display: flex; align-items: center;">
+                    \u274C ${tagName}
+                    <button class="remove-filter-tag" data-tag-id="${tagId}" style="background: none; border: none; color: white; margin-left: 5px; cursor: pointer; font-size: 14px;">\xD7</button>
+                </span>`;
+      }).join("");
+      filterHtml += currentTags.includedPerformers.map((performerId) => {
+        const performerName = performerNames[performerId] || `Performer:${performerId}`;
+        return `
+                <span class="filter-tag-display" data-performer-id="${performerId}" style="color: white; font-size: 12px; background: rgba(233, 30, 99, 0.7); padding: 2px 8px; border-radius: 10px; display: flex; align-items: center;">
+                    \u2705 ${performerName}
+                    <button class="remove-filter-tag" data-performer-id="${performerId}" style="background: none; border: none; color: white; margin-left: 5px; cursor: pointer; font-size: 14px;">\xD7</button>
+                </span>`;
+      }).join("");
+      filterHtml += currentTags.excludedPerformers.map((performerId) => {
+        const performerName = performerNames[performerId] || `Performer:${performerId}`;
+        return `
+                <span class="filter-tag-display" data-performer-id="${performerId}" style="color: white; font-size: 12px; background: rgba(156, 39, 176, 0.7); padding: 2px 8px; border-radius: 10px; display: flex; align-items: center;">
+                    \u274C ${performerName}
+                    <button class="remove-filter-tag" data-performer-id="${performerId}" style="background: none; border: none; color: white; margin-left: 5px; cursor: pointer; font-size: 14px;">\xD7</button>
+                </span>`;
+      }).join("");
+      filterDisplay.innerHTML = filterHtml;
+      filterDisplay.style.display = "flex";
+      container.insertBefore(filterDisplay, container.querySelector(".image-deck-progress"));
+      setTimeout(() => {
+        Promise.resolve().then(() => (init_controls(), controls_exports)).then((module) => {
+          module.cleanupEventHandlers();
+          module.setupEventHandlers(container, {
+            closeDeck: closeDeck2,
+            startAutoPlay,
+            stopAutoPlay,
+            loadNextChunk
+          });
+        });
+      }, 0);
+    }
+  }
+  function updateUI(container) {
     if (!currentSwiper || uiUpdatePending) return;
     uiUpdatePending = true;
     requestAnimationFrame(() => {
+      let modeIndicator = container.querySelector(".mode-indicator");
+      if (!modeIndicator) {
+        const topBar = container.querySelector(".image-deck-topbar");
+        if (topBar) {
+          modeIndicator = document.createElement("div");
+          modeIndicator.className = "mode-indicator";
+          modeIndicator.style.cssText = `
+                    position: absolute;
+                    left: 20px;
+                    top: 40px;  /* Position below the counter */
+                    font-size: 14px;
+                    font-weight: bold;
+                    z-index: 11;
+                    display: flex;
+                    align-items: center;
+                    gap: 5px;
+                    cursor: pointer;
+                `;
+          topBar.appendChild(modeIndicator);
+          modeIndicator.addEventListener("click", async () => {
+            const currentMode = contextInfo?.type === "galleries" ? "gallery" : "image";
+            const newMode = currentMode === "gallery" ? "image" : "gallery";
+            sessionStorage.setItem("imageDeckMode", newMode);
+            const currentFilters = { ...contextInfo?.filter || {} };
+            if (!currentFilters.sortBy) currentFilters.sortBy = "created_at";
+            if (!currentFilters.sortDir) currentFilters.sortDir = "desc";
+            if (contextInfo?.performerId) {
+              if (!currentFilters.performers) {
+                currentFilters.performers = {
+                  value: [contextInfo.performerId],
+                  modifier: "INCLUDES"
+                };
+              }
+              let newPath = `/performers/${contextInfo.performerId}`;
+              if (newMode === "gallery") {
+                newPath += "/galleries";
+              } else {
+                newPath += "/images";
+              }
+              history.pushState({}, "", newPath);
+              const newContext = {
+                type: newMode === "gallery" ? "galleries" : "images",
+                performerId: contextInfo.performerId,
+                isPerformerContext: true,
+                filter: currentFilters
+              };
+              Promise.resolve().then(() => (init_deck(), deck_exports)).then((module) => {
+                module.closeDeck();
+                setTimeout(() => {
+                  module.openDeck();
+                }, 100);
+              });
+            } else {
+              let basePath = "/";
+              if (newMode === "gallery") {
+                basePath = "/galleries";
+              } else {
+                basePath = "/images";
+              }
+              history.pushState({}, "", basePath);
+              const newContext = {
+                type: newMode === "gallery" ? "galleries" : "images",
+                isGalleryListing: newMode === "gallery",
+                isGeneralListing: newMode === "image",
+                filter: currentFilters
+              };
+              Promise.resolve().then(() => (init_deck(), deck_exports)).then((module) => {
+                module.closeDeck();
+                setTimeout(() => {
+                  module.openDeck();
+                }, 100);
+              });
+            }
+          });
+        }
+      }
+      if (modeIndicator) {
+        const isGalleryMode = contextInfo?.type === "galleries";
+        modeIndicator.innerHTML = isGalleryMode ? "\u{1F5BC}\uFE0F Gallery Mode Enabled \u{1F5BC}\uFE0F" : "\u{1F4F7} Image Mode Enabled \u{1F4F7}";
+      }
       let current = 1;
       const displayedTotal = currentImages.length;
       const actualTotal = totalImageCount || displayedTotal;
@@ -1667,14 +3955,14 @@
         }
       }
       if (pluginConfig.showCounter) {
-        const counter = container2.querySelector(".image-deck-counter");
-        const chunkInfo = totalPages2 > 1 ? ` (chunk ${currentChunkPage2}/${totalPages2})` : "";
+        const counter = container.querySelector(".image-deck-counter");
+        const chunkInfo = totalPages > 1 ? ` (chunk ${currentChunkPage}/${totalPages})` : "";
         if (counter) {
           counter.textContent = `${current} of ${actualTotal}${chunkInfo}`;
         }
       }
       if (pluginConfig.showProgressBar) {
-        const progress = container2.querySelector(".image-deck-progress");
+        const progress = container.querySelector(".image-deck-progress");
         if (progress) {
           const progressValue = actualTotal > 0 ? current / actualTotal : 0;
           progress.style.transform = `scaleX(${progressValue})`;
@@ -1687,7 +3975,7 @@
     if (!currentSwiper || isChunkLoading) return;
     const currentIndex = currentSwiper.activeIndex;
     const totalCurrentSlides = currentImages.length;
-    if (currentIndex >= totalCurrentSlides - 3 && currentChunkPage2 < totalPages2) {
+    if (currentIndex >= totalCurrentSlides - 3 && currentChunkPage < totalPages) {
       console.log("[Image Deck] Auto-loading next chunk...");
       loadNextChunk();
     }
@@ -1742,129 +4030,137 @@
       }
     }
   }
-  async function loadNextChunk(container2 = null) {
-    if (isChunkLoading) {
-      console.log("[Image Deck] Load already in progress, skipping...");
-      return;
+  async function loadNextChunk(container = null) {
+    if (chunkLoadTimeout) {
+      clearTimeout(chunkLoadTimeout);
     }
-    if (currentChunkPage2 >= totalPages2 && totalPages2 !== 0) {
-      console.log("[Image Deck] All chunks already loaded.");
-      const loadingIndicator2 = document.querySelector(".image-deck-loading");
-      if (loadingIndicator2) {
-        loadingIndicator2.textContent = "All items loaded";
-        setTimeout(() => {
-          loadingIndicator2.style.display = "none";
-        }, 2e3);
-      }
-      return;
-    }
-    isChunkLoading = true;
-    const loadingIndicator = document.querySelector(".image-deck-loading");
-    const nextChunkButton = document.querySelector('[data-action="next-chunk"]');
-    if (nextChunkButton) {
-      nextChunkButton.disabled = true;
-      nextChunkButton.style.opacity = "0.5";
-      nextChunkButton.innerHTML = "\u{1F504}";
-    }
-    if (loadingIndicator) {
-      loadingIndicator.style.display = "block";
-      loadingIndicator.textContent = `Loading chunk ${currentChunkPage2 + 1}...`;
-    }
-    try {
-      const contextToUse = storedContextInfo || contextInfo || detectContext();
-      if (!contextToUse) throw new Error("Could not detect context for fetching");
-      const nextPage = currentChunkPage2 + 1;
-      const result = await fetchContextImages(contextToUse, nextPage, chunkSize);
-      if (!result || !result.images || result.images.length === 0) {
-        if (loadingIndicator) loadingIndicator.textContent = "No more items found";
-        setTimeout(() => {
-          if (loadingIndicator) loadingIndicator.style.display = "none";
-        }, 2e3);
+    chunkLoadTimeout = setTimeout(async () => {
+      if (isChunkLoading) {
+        console.log("[Image Deck] Load already in progress, skipping...");
         return;
       }
-      currentImages.push(...result.images);
-      currentChunkPage2 = nextPage;
-      totalPages2 = result.totalPages || totalPages2;
-      if (currentSwiper && currentSwiper.virtual) {
-        const allSlides = currentImages.map((img) => {
-          const fullSrc = img.paths.image;
-          const isGallery = img.url && !contextInfo?.isSingleGallery;
-          const title = img.title || "Untitled";
-          const loading = "lazy";
-          if (isGallery) {
-            const imageCountDisplay = img.image_count !== void 0 ? `${GALLERY_ICON_SVG2}: ${img.image_count}` : "";
-            let performerDisplay = "";
-            if (img.performers && img.performers.length > 0) {
-              const performerNames = img.performers.map((p) => p.name).join(", ");
-              performerDisplay = `<div class="gallery-performers" style="margin-top: 5px; font-size: 18px; color: #ccc;">${performerNames}</div>`;
+      if (currentChunkPage >= totalPages && totalPages !== 0) {
+        console.log("[Image Deck] All chunks already loaded.");
+        const loadingIndicator2 = document.querySelector(".image-deck-loading");
+        if (loadingIndicator2) {
+          loadingIndicator2.textContent = "All items loaded";
+          setTimeout(() => {
+            if (loadingIndicator2) loadingIndicator2.style.display = "none";
+          }, 2e3);
+        }
+        return;
+      }
+      isChunkLoading = true;
+      const loadingIndicator = document.querySelector(".image-deck-loading");
+      const nextChunkButton = document.querySelector('[data-action="next-chunk"]');
+      if (nextChunkButton) {
+        nextChunkButton.disabled = true;
+        nextChunkButton.style.opacity = "0.5";
+        nextChunkButton.innerHTML = "\u{1F504}";
+      }
+      if (loadingIndicator) {
+        loadingIndicator.style.display = "block";
+        loadingIndicator.textContent = `Loading chunk ${currentChunkPage + 1}...`;
+      }
+      try {
+        const contextToUse = storedContextInfo2 || contextInfo || detectContext2();
+        if (!contextToUse) throw new Error("Could not detect context for fetching");
+        const nextPage = currentChunkPage + 1;
+        const result = await fetchContextImages(contextToUse, nextPage, chunkSize);
+        if (!result || !result.images || result.images.length === 0) {
+          if (loadingIndicator) loadingIndicator.textContent = "No more items found";
+          setTimeout(() => {
+            if (loadingIndicator) loadingIndicator.style.display = "none";
+          }, 2e3);
+          return;
+        }
+        currentImages.push(...result.images);
+        currentChunkPage = nextPage;
+        totalPages = result.totalPages || totalPages;
+        if (currentSwiper && currentSwiper.virtual) {
+          const allSlides = currentImages.map((img) => {
+            const fullSrc = img.paths.image;
+            const isGallery = img.url && !contextInfo?.isSingleGallery;
+            const title = img.title || "Untitled";
+            const loading = "lazy";
+            if (isGallery) {
+              const imageCountDisplay = img.image_count !== void 0 ? `${GALLERY_ICON_SVG}: ${img.image_count}` : "";
+              let performerDisplay = "";
+              if (img.performers && img.performers.length > 0) {
+                const performerNames = img.performers.map((p) => p.name).join(", ");
+                performerDisplay = `<div class="gallery-performers" style="margin-top: 5px; font-size: 18px; color: #ccc;">${performerNames}</div>`;
+              }
+              return `
+                            <div class="swiper-zoom-container" data-type="gallery" data-url="${img.url}">
+                                <div class="gallery-cover-container">
+                                    <div class="gallery-cover-title" title="${title}">${title}</div>
+                                    ${imageCountDisplay ? `<div class="gallery-image-count" style="font-size: 18px; color: #ccc; margin-top: 3px;">${imageCountDisplay}</div>` : ""}
+                                    <a href="${img.url}" target="_blank" class="gallery-cover-link">
+                                        <img src="${fullSrc}" alt="${title}" decoding="async" loading="${loading}" />
+                                    </a>
+                                    ${performerDisplay}
+                                </div>
+                            </div>`;
             }
             return `
-            <div class="swiper-zoom-container" data-type="gallery" data-url="${img.url}">
-                <div class="gallery-cover-container">
-                    <div class="gallery-cover-title" title="${title}">${title}</div>
-                    ${imageCountDisplay ? `<div class="gallery-image-count" style="font-size: 18px; color: #ccc; margin-top: 3px;">${imageCountDisplay}</div>` : ""}
-                    <a href="${img.url}" target="_blank" class="gallery-cover-link">
-                        <img src="${fullSrc}" alt="${title}" decoding="async" loading="${loading}" />
-                    </a>
-                    ${performerDisplay}
-                </div>
-            </div>`;
-          }
-          return `
-			<div class="swiper-zoom-container" data-type="image">
-				<img src="${fullSrc}" alt="${title}" decoding="async" loading="${loading}" 
-					 style="max-width: 100%; height: auto; display: block; margin: 0 auto;" />
-			</div>`;
-        });
-        currentSwiper.virtual.slides = allSlides;
-        currentSwiper.virtual.update(true);
-        setTimeout(() => {
-          if (currentSwiper) currentSwiper.update();
-        }, 100);
-      } else {
-        const galleryGrid = document.querySelector(".gallery-grid");
-        if (galleryGrid) {
-          result.images.forEach((img) => {
-            const imgHTML = `<div class="gallery-item"><img src="${img.paths.image}" alt="${img.title || ""}" class="gallery-img" /></div>`;
-            galleryGrid.insertAdjacentHTML("beforeend", imgHTML);
+                        <div class="swiper-zoom-container" data-type="image">
+                            <img src="${fullSrc}" alt="${title}" decoding="async" loading="${loading}" 
+                                 style="max-width: 100%; height: auto; display: block; margin: 0 auto;" />
+                        </div>`;
           });
+          currentSwiper.virtual.slides = allSlides;
+          currentSwiper.virtual.update(true);
+          setTimeout(() => {
+            if (currentSwiper) currentSwiper.update();
+          }, 100);
+        } else {
+          const galleryGrid = document.querySelector(".gallery-grid");
+          if (galleryGrid) {
+            result.images.forEach((img) => {
+              const imgHTML = `<div class="gallery-item"><img src="${img.paths.image}" alt="${img.title || ""}" class="gallery-img" /></div>`;
+              galleryGrid.insertAdjacentHTML("beforeend", imgHTML);
+            });
+          }
+        }
+        const container2 = document.querySelector(".image-deck-container");
+        if (container2 && typeof updateUI === "function") updateUI(container2);
+        if (loadingIndicator) {
+          loadingIndicator.textContent = `\u2713 Loaded ${result.images.length} new items`;
+          setTimeout(() => {
+            loadingIndicator.style.display = "none";
+          }, 2e3);
+        }
+      } catch (error) {
+        console.error("[Image Deck] Failed to load chunk:", error);
+        if (loadingIndicator) {
+          loadingIndicator.textContent = "Error: " + error.message;
+          setTimeout(() => {
+            loadingIndicator.style.display = "none";
+          }, 3e3);
+        }
+      } finally {
+        isChunkLoading = false;
+        if (nextChunkButton) {
+          nextChunkButton.disabled = false;
+          nextChunkButton.style.opacity = "1";
+          nextChunkButton.innerHTML = "\u23ED\uFE0F";
         }
       }
-      const container3 = document.querySelector(".image-deck-container");
-      if (container3 && typeof updateUI === "function") updateUI(container3);
-      if (loadingIndicator) {
-        loadingIndicator.textContent = `\u2713 Loaded ${result.images.length} new items`;
-        setTimeout(() => {
-          loadingIndicator.style.display = "none";
-        }, 2e3);
-      }
-    } catch (error) {
-      console.error("[Image Deck] Failed to load chunk:", error);
-      if (loadingIndicator) {
-        loadingIndicator.textContent = "Error: " + error.message;
-        setTimeout(() => {
-          loadingIndicator.style.display = "none";
-        }, 3e3);
-      }
-    } finally {
-      isChunkLoading = false;
-      if (nextChunkButton) {
-        nextChunkButton.disabled = false;
-        nextChunkButton.style.opacity = "1";
-        nextChunkButton.innerHTML = "\u23ED\uFE0F";
-      }
-    }
+    }, 100);
   }
-  function closeDeck() {
+  function closeDeck2() {
+    cleanupFunctions.forEach((cleanup) => cleanup());
+    cleanupFunctions = [];
     stopAutoPlay();
+    stopPerformanceMonitoring();
     Promise.resolve().then(() => (init_controls(), controls_exports)).then((module) => {
       module.cleanupEventHandlers();
     });
-    const container2 = document.querySelector(".image-deck-container");
-    if (container2) {
-      container2.classList.remove("active");
+    const container = document.querySelector(".image-deck-container");
+    if (container) {
+      container.classList.remove("active");
       setTimeout(() => {
-        container2.remove();
+        container.remove();
         document.body.classList.remove("image-deck-open");
       }, 300);
     }
@@ -1881,7 +4177,7 @@
     }
     isAutoPlaying = false;
   }
-  var GALLERY_ICON_SVG2, pluginConfig, currentSwiper, currentImages, autoPlayInterval, isAutoPlaying, contextInfo, loadingQueue, currentChunkPage2, chunkSize, totalImageCount, totalPages2, storedContextInfo, uiUpdatePending, isChunkLoading;
+  var chunkLoadTimeout, pluginConfig, currentSwiper, currentImages, autoPlayInterval, isAutoPlaying, contextInfo, loadingQueue, currentChunkPage, chunkSize, totalImageCount, totalPages, storedContextInfo2, performanceMonitor, frameDropCount, cleanupFunctions, uiUpdatePending, isChunkLoading;
   var init_deck = __esm({
     "deck.js"() {
       init_config();
@@ -1889,7 +4185,9 @@
       init_metadata();
       init_swiper();
       init_utils();
-      GALLERY_ICON_SVG2 = '<svg fill="white" width="16" height="16" viewBox="0 0 36 36" style="vertical-align: middle;" xmlns="http://www.w3.org/2000/svg"><path d="M32,4H4A2,2,0,0,0,2,6V30a2,2,0,0,0,2,2H32a2,2,0,0,0,2-2V6A2,2,0,0,0,32,4ZM4,30V6H32V30Z"></path><path d="M8.92,14a3,3,0,1,0-3-3A3,3,0,0,0,8.92,14Zm0-4.6A1.6,1.6,0,1,1,7.33,11,1.6,1.6,0,0,1,8.92,9.41Z"></path><path d="M22.78,15.37l-5.4,5.4-4-4a1,1,0,0,0-1.41,0L5.92,22.9v2.83l6.79-6.79L16,22.18l-3.75,3.75H15l8.45-8.45L30,24V21.18l-5.81-5.81A1,1,0,0,0,22.78,15.37Z"></path></svg>';
+      init_constants();
+      init_filters();
+      chunkLoadTimeout = null;
       pluginConfig = null;
       currentSwiper = null;
       currentImages = [];
@@ -1897,11 +4195,14 @@
       isAutoPlaying = false;
       contextInfo = null;
       loadingQueue = [];
-      currentChunkPage2 = 1;
+      currentChunkPage = 1;
       chunkSize = 50;
       totalImageCount = 0;
-      totalPages2 = 0;
-      storedContextInfo = null;
+      totalPages = 0;
+      storedContextInfo2 = null;
+      performanceMonitor = null;
+      frameDropCount = 0;
+      cleanupFunctions = [];
       uiUpdatePending = false;
       isChunkLoading = false;
     }
@@ -1909,34 +4210,20 @@
 
   // button.js
   init_context();
-  var retryTimer = null;
   var observer = new MutationObserver(() => {
-    const path = window.location.pathname;
-    if (path.startsWith("/galleries") || path.startsWith("/images") || path.match(/^\/performers\/\d+/)) {
-      if (!document.getElementById("image-deck-nav-btn")) {
-        retryCreateButton();
-      }
-    } else {
-      cleanupButton();
+    if (observer.debounceTimer) {
+      clearTimeout(observer.debounceTimer);
     }
+    observer.debounceTimer = setTimeout(() => {
+      if (!document.getElementById("image-deck-nav-btn")) {
+        createLaunchButton();
+      }
+    }, 100);
   });
   observer.observe(document.body, { childList: true, subtree: true });
   function createLaunchButton() {
     const buttonId = "image-deck-nav-btn";
     const existing = document.getElementById(buttonId);
-    const path = window.location.pathname;
-    const isAllowedPath = path.startsWith("/galleries") || path.startsWith("/images") || path.match(/^\/performers\/\d+/);
-    if (!isAllowedPath) {
-      cleanupButton();
-      return;
-    }
-    const context = detectContext();
-    const hasImages = document.querySelectorAll('img[src*="/image/"]').length > 0;
-    const hasGalleryCovers = document.querySelectorAll(".gallery-cover img, .gallery-card img").length > 0;
-    const isPerformerPage = path.match(/^\/performers\/\d+/);
-    if (!context && !hasImages && !hasGalleryCovers && !isPerformerPage) {
-      return;
-    }
     if (existing) return;
     const buttonContainer = document.createElement("div");
     buttonContainer.className = "col-4 col-sm-3 col-md-2 col-lg-auto nav-link";
@@ -1966,25 +4253,8 @@
       navTarget.appendChild(buttonContainer);
     }
   }
-  function cleanupButton() {
-    const existing = document.getElementById("image-deck-nav-btn");
-    if (existing) existing.closest(".nav-link")?.remove();
-  }
   function retryCreateButton(attempts = 0, maxAttempts = 5) {
-    const path = window.location.pathname;
-    const isAllowed = path.startsWith("/galleries") || path.startsWith("/images") || path.match(/^\/performers\/\d+/);
-    if (!isAllowed) {
-      cleanupButton();
-      return;
-    }
-    const hasContext = detectContext() || document.querySelectorAll('img[src*="/image/"]').length > 0 || document.querySelectorAll(".gallery-cover img, .gallery-card img").length > 0 || path.match(/^\/performers\/\d+/);
-    if (hasContext) {
-      createLaunchButton();
-    } else if (attempts < maxAttempts - 1) {
-      clearTimeout(retryTimer);
-      const delays = [100, 300, 500, 1e3, 2e3];
-      retryTimer = setTimeout(() => retryCreateButton(attempts + 1, maxAttempts), delays[attempts]);
-    }
+    createLaunchButton();
   }
 
   // ui.js
@@ -1996,6 +4266,7 @@
       return;
     }
     retryCreateButton();
+    initPreviewObserver();
     let debounceTimer;
     const observer2 = new MutationObserver((mutations) => {
       clearTimeout(debounceTimer);
@@ -2011,12 +4282,8 @@
     observer2.observe(mainContent, {
       childList: true,
       subtree: true
-      // Watch subtree to catch React updates
     });
     console.log("[Image Deck] Initialized");
-  }
-  function initPlugin() {
-    initPreviewObserver();
   }
   function initPreviewObserver() {
     const previewObserver = new MutationObserver((mutations) => {
@@ -2024,37 +4291,44 @@
         mutation.addedNodes.forEach((node) => {
           if (node.nodeType === 1) {
             let previewButtons = [];
-            if (node.matches && node.matches(".preview-button")) {
+            const isPreviewButton = (el) => {
+              if (el.tagName !== "BUTTON") return false;
+              const svg = el.querySelector("svg");
+              return svg && svg.dataset.icon === "magnifying-glass";
+            };
+            if (isPreviewButton(node)) {
               previewButtons.push(node);
             }
             if (node.querySelectorAll) {
-              previewButtons = [...previewButtons, ...node.querySelectorAll(".preview-button")];
-            }
-            previewButtons.forEach((previewContainer) => {
-              if (!previewContainer.dataset.hijacked) {
-                previewContainer.dataset.hijacked = "true";
-                const button = previewContainer.querySelector("button");
-                if (button) {
-                  const newButton = button.cloneNode(true);
-                  button.parentNode.replaceChild(newButton, button);
-                  newButton.addEventListener("click", (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    console.log("[Image Deck] Preview button clicked (dynamic)");
-                    const card = previewContainer.closest(".image-card, .grid-card");
-                    const img = card?.querySelector('img[src*="/image/"]');
-                    let targetImageId = null;
-                    if (img) {
-                      const idMatch = img.src.match(/\/image\/(\d+)/);
-                      if (idMatch) {
-                        targetImageId = idMatch[1];
-                      }
-                    }
-                    Promise.resolve().then(() => (init_deck(), deck_exports)).then((module) => {
-                      module.openDeck(targetImageId);
-                    });
-                  });
+              const buttons = node.querySelectorAll("button");
+              buttons.forEach((btn) => {
+                if (isPreviewButton(btn)) {
+                  previewButtons.push(btn);
                 }
+              });
+            }
+            previewButtons.forEach((button) => {
+              if (!button.dataset.hijacked) {
+                button.dataset.hijacked = "true";
+                const newButton = button.cloneNode(true);
+                button.parentNode.replaceChild(newButton, button);
+                newButton.addEventListener("click", (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  console.log("[Image Deck] Preview button clicked (dynamic)");
+                  const card = newButton.closest(".image-card, .grid-card");
+                  const img = card?.querySelector('img[src*="/image/"]');
+                  let targetImageId = null;
+                  if (img) {
+                    const idMatch = img.src.match(/\/image\/(\d+)/);
+                    if (idMatch) {
+                      targetImageId = idMatch[1];
+                    }
+                  }
+                  Promise.resolve().then(() => (init_deck(), deck_exports)).then((module) => {
+                    module.openDeck(targetImageId);
+                  });
+                });
               }
             });
           }
@@ -2065,20 +4339,21 @@
       childList: true,
       subtree: true
     });
-    document.querySelectorAll(".preview-button").forEach(processPreviewButton);
+    processExistingPreviewButtons();
   }
-  function processPreviewButton(previewContainer) {
-    if (!previewContainer.dataset.hijacked) {
-      previewContainer.dataset.hijacked = "true";
-      const button = previewContainer.querySelector("button");
-      if (button) {
+  function processExistingPreviewButtons() {
+    const buttons = document.querySelectorAll("button");
+    buttons.forEach((button) => {
+      const svg = button.querySelector("svg");
+      if (svg && svg.dataset.icon === "magnifying-glass" && !button.dataset.hijacked) {
+        button.dataset.hijacked = "true";
         const newButton = button.cloneNode(true);
         button.parentNode.replaceChild(newButton, button);
         newButton.addEventListener("click", (e) => {
           e.preventDefault();
           e.stopPropagation();
           console.log("[Image Deck] Preview button clicked");
-          const card = previewContainer.closest(".image-card, .grid-card");
+          const card = newButton.closest(".image-card, .grid-card");
           const img = card?.querySelector('img[src*="/image/"]');
           let targetImageId = null;
           if (img) {
@@ -2092,47 +4367,42 @@
           });
         });
       }
-    }
+    });
   }
 
   // main.js
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", () => {
-      initialize();
-      initPlugin();
-    });
-  } else {
+  function initApp() {
     initialize();
-    initPlugin();
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initApp);
+  } else {
+    initApp();
   }
   var lastUrl = location.href;
-  var originalPushState = history.pushState;
-  var originalReplaceState = history.replaceState;
-  history.pushState = function() {
-    originalPushState.apply(history, arguments);
-    handleNavigation();
-  };
-  history.replaceState = function() {
-    originalReplaceState.apply(history, arguments);
-    handleNavigation();
-  };
-  window.addEventListener("popstate", handleNavigation);
-  setInterval(() => {
-    if (location.href !== lastUrl) {
-      lastUrl = location.href;
-      handleNavigation();
-    }
-  }, 500);
   function handleNavigation() {
+    if (lastUrl === location.href) return;
     lastUrl = location.href;
     const existingButton = document.querySelector(".image-deck-launch-btn");
-    if (existingButton) {
-      existingButton.remove();
-    }
+    if (existingButton) existingButton.remove();
     const existingDeck = document.querySelector(".image-deck-container");
     if (existingDeck) {
       existingDeck.remove();
       document.body.classList.remove("image-deck-open");
     }
   }
+  var originalPushState = history.pushState;
+  var originalReplaceState = history.replaceState;
+  history.pushState = function() {
+    originalPushState.apply(history, arguments);
+    setTimeout(handleNavigation, 100);
+  };
+  history.replaceState = function() {
+    originalReplaceState.apply(history, arguments);
+    setTimeout(handleNavigation, 100);
+  };
+  window.addEventListener("popstate", () => {
+    setTimeout(handleNavigation, 100);
+  });
+  setInterval(handleNavigation, 500);
 })();

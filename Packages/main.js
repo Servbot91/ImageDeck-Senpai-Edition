@@ -1,54 +1,42 @@
-import { initialize, initPlugin } from './ui.js';
+import { initialize } from './ui.js';
 import './styles.css';
-
-// Initialize when DOM is ready
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-        initialize();
-        initPlugin(); // Call initPlugin to start the observer
-    });
-} else {
+function initApp() {
     initialize();
-    initPlugin(); // Call initPlugin to start the observer
 }
 
-// Track last URL to detect changes
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initApp);
+} else {
+    initApp();
+}
 let lastUrl = location.href;
-
-// Handle SPA navigation
-const originalPushState = history.pushState;
-const originalReplaceState = history.replaceState;
-
-history.pushState = function() {
-    originalPushState.apply(history, arguments);
-    handleNavigation();
-};
-
-history.replaceState = function() {
-    originalReplaceState.apply(history, arguments);
-    handleNavigation();
-};
-
-window.addEventListener('popstate', handleNavigation);
-
-setInterval(() => {
-    if (location.href !== lastUrl) {
-        lastUrl = location.href;
-        handleNavigation();
-    }
-}, 500);
-
 function handleNavigation() {
+    if (lastUrl === location.href) return;
     lastUrl = location.href;
-    // Remove any existing image deck button
     const existingButton = document.querySelector('.image-deck-launch-btn');
-    if (existingButton) {
-        existingButton.remove();
-    }
-    // Remove any existing image deck container
+    if (existingButton) existingButton.remove();
+
     const existingDeck = document.querySelector('.image-deck-container');
     if (existingDeck) {
         existingDeck.remove();
         document.body.classList.remove('image-deck-open');
     }
 }
+
+const originalPushState = history.pushState;
+const originalReplaceState = history.replaceState;
+
+history.pushState = function() {
+    originalPushState.apply(history, arguments);
+    setTimeout(handleNavigation, 100);
+};
+
+history.replaceState = function() {
+    originalReplaceState.apply(history, arguments);
+    setTimeout(handleNavigation, 100);
+};
+
+window.addEventListener('popstate', () => {
+    setTimeout(handleNavigation, 100);
+});
+setInterval(handleNavigation, 500);

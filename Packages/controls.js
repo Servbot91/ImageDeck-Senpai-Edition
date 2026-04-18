@@ -1,11 +1,55 @@
-// ui/controls.js
-import { closeDeck, startAutoPlay, stopAutoPlay, loadNextChunk } from './deck.js';
+import { searchTags, searchPerformers, applyGalleryTagFilter, clearGalleryTagFilter } from './graphql.js';
 import { openMetadataModal, closeMetadataModal } from './metadata.js';
+import { isMobile } from './utils.js';
+import { state } from './state.js';
+import { detectContext } from './context.js';
+
+const elementData = new WeakMap();
+
+export function storeElementData(element, data) {
+    elementData.set(element, data);
+}
+
+export function getElementData(element) {
+    return elementData.get(element);
+}
+
+class EventHandlerManager {
+    constructor() {
+        this.listeners = new Map();
+    }
+
+    add(element, event, handler, options = false) {
+        const key = `${element.constructor.name}_${event}_${Math.random()}`;
+        element.addEventListener(event, handler, options);
+        
+        if (!this.listeners.has(key)) {
+            this.listeners.set(key, { element, event, handler, options });
+        }
+        
+        return key;
+    }
+
+    remove(key) {
+        if (this.listeners.has(key)) {
+            const { element, event, handler } = this.listeners.get(key);
+            element.removeEventListener(event, handler);
+            this.listeners.delete(key);
+        }
+    }
+
+    removeAll() {
+        for (const [key, { element, event, handler }] of this.listeners) {
+            element.removeEventListener(event, handler);
+        }
+        this.listeners.clear();
+    }
+}
+
+const eventManager = new EventHandlerManager();
 
 let isDeckActive = false;
-let keyboardHandler = null;
 
-// Fullscreen functionality
 function toggleFullscreen() {
     const container = document.querySelector('.image-deck-container');
     if (!container) return;
@@ -14,52 +58,110 @@ function toggleFullscreen() {
         container.requestFullscreen().catch(err => {
             console.warn('[Image Deck] Fullscreen request failed:', err);
         }).finally(() => {
-            // Update any UI elements that need to know about fullscreen state
             updateFullscreenUI(true);
         });
     } else {
         document.exitFullscreen().finally(() => {
-            // Update any UI elements that need to know about fullscreen state
             updateFullscreenUI(false);
         });
     }
 }
 
-// Add this helper function to update UI based on fullscreen state
 function updateFullscreenUI(isFullscreen) {
     const fullscreenBtn = document.querySelector('.image-deck-fullscreen');
     if (fullscreenBtn) {
-        fullscreenBtn.textContent = isFullscreen ? '⛶' : '⛶'; // You could change the icon if desired
+        fullscreenBtn.textContent = isFullscreen ? '⛶' : '⛶';
     }
     
-    // Add/remove a class to the container for styling purposes
     const container = document.querySelector('.image-deck-container');
     if (container) {
         if (isFullscreen) {
             container.classList.add('fullscreen-mode');
+            // Hide all UI elements in fullscreen mode
+            updateControlVisibility(false);
         } else {
             container.classList.remove('fullscreen-mode');
+            // Show all UI elements when exiting fullscreen
+            updateControlVisibility(true);
         }
     }
 }
 
-
-// Helper function to check if current slide is a gallery
-function isCurrentSlideGallery() {
-    const swiper = window.currentSwiperInstance;
-    if (swiper && swiper.slides) {
-        const activeSlide = swiper.slides[swiper.activeIndex];
-        if (activeSlide) {
-            const zoomContainer = activeSlide.querySelector('.swiper-zoom-container');
-            if (zoomContainer && zoomContainer.dataset.type === 'gallery') {
-                return true;
-            }
+function updateControlVisibility(isVisible = true) {
+    const container = document.querySelector('.image-deck-container');
+    if (!container) return;
+    
+    const controlsWrapper = container.querySelector('.image-deck-controls-wrapper');
+    const topBar = container.querySelector('.image-deck-topbar');
+    const speedIndicator = container.querySelector('.image-deck-speed');
+    const filterDisplay = container.querySelector('.image-deck-current-filters');
+    
+    const opacity = isVisible ? '1' : '0';
+    const pointerEvents = isVisible ? 'auto' : 'none';
+    
+    if (topBar) {
+        topBar.style.opacity = opacity;
+        topBar.style.pointerEvents = pointerEvents;
+    }
+    
+    if (controlsWrapper) {
+        controlsWrapper.style.opacity = opacity;
+        controlsWrapper.style.pointerEvents = pointerEvents;
+    }
+    
+    if (speedIndicator) {
+        speedIndicator.style.opacity = opacity;
+        speedIndicator.style.pointerEvents = pointerEvents;
+    }
+    
+    if (filterDisplay) {
+        filterDisplay.style.opacity = opacity;
+        filterDisplay.style.pointerEvents = pointerEvents;
+    }
+    
+    // Special handling for fullscreen - always hide in fullscreen regardless of isVisible param
+    if (document.fullscreenElement) {
+        if (topBar) {
+            topBar.style.opacity = '0';
+            topBar.style.pointerEvents = 'none';
+        }
+        if (controlsWrapper) {
+            controlsWrapper.style.opacity = '0';
+            controlsWrapper.style.pointerEvents = 'none';
+        }
+        if (speedIndicator) {
+            speedIndicator.style.opacity = '0';
+            speedIndicator.style.pointerEvents = 'none';
+        }
+        if (filterDisplay) {
+            filterDisplay.style.opacity = '0';
+            filterDisplay.style.pointerEvents = 'none';
         }
     }
+}
+
+function isCurrentSlideGallery() {
+    const swiper = state.getSwiper();
+    if (!swiper) return false;
+    const currentIndex = swiper.activeIndex;
+    const currentImages = window.currentImages || [];
+    
+    if (currentIndex < currentImages.length) {
+        const currentImage = currentImages[currentIndex];
+        if (currentImage) {
+            return !!(currentImage.url && currentImage.image_count !== undefined);
+        }
+    }
+
+    const activeSlide = swiper.slides[swiper.activeIndex];
+    if (activeSlide) {
+        const zoomContainer = activeSlide.querySelector('.swiper-zoom-container');
+        return zoomContainer && zoomContainer.dataset.type === 'gallery';
+    }
+    
     return false;
 }
 
-// Function to update the gallery state class
 function updateGalleryStateClass() {
     const container = document.querySelector('.image-deck-container');
     if (!container) return;
@@ -71,114 +173,540 @@ function updateGalleryStateClass() {
     }
 }
 
-// Setup event handlers
-export function setupEventHandlers(container) {
-    // Set deck as active when handlers are set up
-    setDeckActive(true);
+class EventManager {
+    static instance = new EventManager();
     
-    // Close button
+    constructor() {
+        this.handlers = new Map();
+    }
+    
+    static add(element, event, handler, options = false) {
+        const key = `${element.constructor.name}_${event}_${Date.now()}_${Math.random()}`;
+        element.addEventListener(event, handler, options);
+        this.instance.handlers.set(key, { element, event, handler, options });
+        return key;
+    }
+    
+    static remove(key) {
+        if (this.instance.handlers.has(key)) {
+            const { element, event, handler } = this.instance.handlers.get(key);
+            element.removeEventListener(event, handler);
+            this.instance.handlers.delete(key);
+        }
+    }
+    
+    static removeAll() {
+        for (const [key, { element, event, handler }] of this.instance.handlers) {
+            try {
+                element.removeEventListener(event, handler);
+            } catch (e) {
+                console.warn('Failed to remove event listener:', e);
+            }
+        }
+        this.instance.handlers.clear();
+    }
+}
+
+function showGalleryTagFilter() {
+    const existingModal = document.querySelector('.gallery-tag-filter-modal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    const modal = document.createElement('div');
+    modal.className = 'gallery-tag-filter-modal image-deck-metadata-modal';
+    modal.style.cssText = `
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 90%;
+        max-width: 500px;
+        max-height: 90vh;
+        background: rgba(0, 0, 0, 0.95);
+        backdrop-filter: blur(20px);
+        border-radius: 20px;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+        z-index: 10000;
+        display: flex;
+        flex-direction: column;
+    `;
+    
+    modal.innerHTML = `
+        <div class="image-deck-metadata-content" style="display: flex; flex-direction: column; height: auto; max-height: 90vh;">
+            <div class="image-deck-metadata-header">
+                <h3>Filter Galleries by Tag</h3>
+                <button class="close-filter-modal image-deck-metadata-close" style="width: 36px; height: 36px; font-size: 24px;">✕</button>
+            </div>
+            <div class="image-deck-metadata-body" style="flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column;">
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; color: rgba(255,255,255,0.7); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; font-weight: 600;">Included Tags</label>
+                    <input type="text" class="included-tag-search" placeholder="Search tags..." style="width: 100%; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; color: white; padding: 12px; font-size: 14px; margin-bottom: 10px;">
+                    <div class="included-tag-list" style="max-height: 150px; overflow-y: auto; background: rgba(255,255,255,0.05); border-radius: 8px; padding: 5px; margin-bottom: 15px;"></div>
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; color: rgba(255,255,255,0.7); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; font-weight: 600;">Excluded Tags</label>
+                    <input type="text" class="excluded-tag-search" placeholder="Search tags..." style="width: 100%; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; color: white; padding: 12px; font-size: 14px; margin-bottom: 10px;">
+                    <div class="excluded-tag-list" style="max-height: 150px; overflow-y: auto; background: rgba(255,255,255,0.05); border-radius: 8px; padding: 5px; margin-bottom: 15px;"></div>
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; color: rgba(255,255,255,0.7); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; font-weight: 600;">Included Performers</label>
+                    <input type="text" class="included-performer-search" placeholder="Search performers..." style="width: 100%; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; color: white; padding: 12px; font-size: 14px; margin-bottom: 10px;">
+                    <div class="included-performer-list" style="max-height: 150px; overflow-y: auto; background: rgba(255,255,255,0.05); border-radius: 8px; padding: 5px; margin-bottom: 15px;"></div>
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; color: rgba(255,255,255,0.7); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; font-weight: 600;">Excluded Performers</label>
+                    <input type="text" class="excluded-performer-search" placeholder="Search performers..." style="width: 100%; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; color: white; padding: 12px; font-size: 14px; margin-bottom: 10px;">
+                    <div class="excluded-performer-list" style="max-height: 150px; overflow-y: auto; background: rgba(255,255,255,0.05); border-radius: 8px; padding: 5px; margin-bottom: 15px;"></div>
+                </div>
+            </div>
+            <div style="padding: 0 20px 20px 20px;">
+                <div style="display: flex; gap: 12px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1);">
+                    <button class="clear-tag-filter" style="flex: 1; padding: 14px 24px; border-radius: 8px; background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s ease;">Clear</button>
+                    <button class="apply-tag-filter" style="flex: 1; padding: 14px 24px; border-radius: 8px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s ease;">Apply Filter</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    const closeBtn = modal.querySelector('.close-filter-modal');
+    closeBtn.addEventListener('click', () => {
+        modal.remove();
+    });
+    
+    const escapeHandler = (e) => {
+        if (e.key === 'Escape') {
+            modal.remove();
+            document.removeEventListener('keydown', escapeHandler);
+        }
+    };
+    document.addEventListener('keydown', escapeHandler);
+    
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            modal.remove();
+        }
+    });
+	
+    const includedSearchInput = modal.querySelector('.included-tag-search');
+    const excludedSearchInput = modal.querySelector('.excluded-tag-search');
+    const includedPerformerSearchInput = modal.querySelector('.included-performer-search');
+    const excludedPerformerSearchInput = modal.querySelector('.excluded-performer-search');
+    const includedTagList = modal.querySelector('.included-tag-list');
+    const excludedTagList = modal.querySelector('.excluded-tag-list');
+    const includedPerformerList = modal.querySelector('.included-performer-list');
+    const excludedPerformerList = modal.querySelector('.excluded-performer-list');
+    
+    let includedTags = [];
+    let excludedTags = [];
+    let includedPerformers = [];
+    let excludedPerformers = [];
+
+    function setupTagSearch(inputElement, tagListContainer, selectedTags, type) {
+        let searchTimeout;
+        
+        inputElement.addEventListener('input', async (e) => {
+            clearTimeout(searchTimeout);
+            const query = e.target.value.trim();
+            if (query.length >= 1) {
+                searchTimeout = setTimeout(async () => {
+                    try {
+                        const tags = await searchTags(query);
+                        renderTagList(tags, tagListContainer, selectedTags, type);
+                    } catch (error) {
+                        console.error('Error searching tags:', error);
+                        tagListContainer.innerHTML = '<div style="color: #ff6b6b; padding: 8px;">Error loading tags</div>';
+                    }
+                }, 300); 
+            } else {
+                tagListContainer.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type to search tags</div>';
+            }
+        });
+    }
+
+    function setupPerformerSearch(inputElement, performerListContainer, selectedPerformers, type) {
+        let searchTimeout;
+        
+        inputElement.addEventListener('input', async (e) => {
+            clearTimeout(searchTimeout);
+            const query = e.target.value.trim();
+            if (query.length >= 1) {
+                searchTimeout = setTimeout(async () => {
+                    try {
+                        const performers = await searchPerformers(query);
+                        renderPerformerList(performers, performerListContainer, selectedPerformers, type);
+                    } catch (error) {
+                        console.error('Error searching performers:', error);
+                        performerListContainer.innerHTML = '<div style="color: #ff6b6b; padding: 8px;">Error loading performers</div>';
+                    }
+                }, 300); 
+            } else {
+                performerListContainer.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type to search performers</div>';
+            }
+        });
+    }
+
+    const currentFilter = sessionStorage.getItem('galleryTagFilter');
+    if (currentFilter) {
+        try {
+            const filterObj = JSON.parse(currentFilter);
+            includedTags = filterObj.includedTags || [];
+            excludedTags = filterObj.excludedTags || [];
+            includedPerformers = filterObj.includedPerformers || [];
+            excludedPerformers = filterObj.excludedPerformers || [];
+            setTimeout(() => {
+                if (includedSearchInput.value.trim().length >= 1) {
+                    includedSearchInput.dispatchEvent(new Event('input'));
+                }
+                if (excludedSearchInput.value.trim().length >= 1) {
+                    excludedSearchInput.dispatchEvent(new Event('input'));
+                }
+                if (includedPerformerSearchInput.value.trim().length >= 1) {
+                    includedPerformerSearchInput.dispatchEvent(new Event('input'));
+                }
+                if (excludedPerformerSearchInput.value.trim().length >= 1) {
+                    excludedPerformerSearchInput.dispatchEvent(new Event('input'));
+                }
+            }, 100);
+        } catch (e) {
+            console.error('Error parsing current filter:', e);
+        }
+    }
+    
+    setupTagSearch(includedSearchInput, includedTagList, includedTags, 'included');
+    setupTagSearch(excludedSearchInput, excludedTagList, excludedTags, 'excluded');    
+    setupPerformerSearch(includedPerformerSearchInput, includedPerformerList, includedPerformers, 'included');
+    setupPerformerSearch(excludedPerformerSearchInput, excludedPerformerList, excludedPerformers, 'excluded');
+    
+    if (includedSearchInput.value.trim().length >= 1) {
+        includedSearchInput.dispatchEvent(new Event('input'));
+    } else {
+        includedTagList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
+    }
+    
+    if (excludedSearchInput.value.trim().length >= 1) {
+        excludedSearchInput.dispatchEvent(new Event('input'));
+    } else {
+        excludedTagList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
+    }
+    
+    if (includedPerformerSearchInput.value.trim().length >= 1) {
+        includedPerformerSearchInput.dispatchEvent(new Event('input'));
+    } else {
+        includedPerformerList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
+    }
+    
+    if (excludedPerformerSearchInput.value.trim().length >= 1) {
+        excludedPerformerSearchInput.dispatchEvent(new Event('input'));
+    } else {
+        excludedPerformerList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
+    }
+    
+    const applyBtn = modal.querySelector('.apply-tag-filter');
+    applyBtn.addEventListener('click', () => {
+        if (includedTags.length > 0 || excludedTags.length > 0 || includedPerformers.length > 0 || excludedPerformers.length > 0) {
+            applyGalleryTagFilter(includedTags, excludedTags, includedPerformers, excludedPerformers);
+        } else {
+            clearGalleryTagFilter();
+        }
+        modal.remove();
+    });
+    
+		const clearBtn = modal.querySelector('.clear-tag-filter');
+		clearBtn.addEventListener('click', () => {
+			includedTags = [];
+			excludedTags = [];
+			includedPerformers = [];
+			excludedPerformers = [];
+			includedSearchInput.value = '';
+			excludedSearchInput.value = '';
+			includedPerformerSearchInput.value = '';
+			excludedPerformerSearchInput.value = '';
+			includedTagList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
+			excludedTagList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
+			includedPerformerList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
+			excludedPerformerList.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">Type at least 2 characters to search</div>';
+			clearGalleryTagFilter();
+			
+			// Trigger immediate refresh when clearing
+			window.dispatchEvent(new CustomEvent('updateDeckContent', { 
+				detail: { tagIds: [] } 
+			}));
+		});
+}
+
+function renderPerformerList(performers, container, selectedPerformers, type) {
+    if (!performers || performers.length === 0) {
+        container.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">No performers found</div>';
+        return;
+    }
+    
+    container.innerHTML = performers.map(performer => `  
+        <div class="performer-item" style="padding: 8px; cursor: pointer; display: flex; align-items: center; border-radius: 4px; margin-bottom: 2px; ${selectedPerformers.includes(performer.id) ? 'background: #444;' : 'background: #333;'}">
+            <input type="checkbox" id="performer-${type}-${performer.id}" ${selectedPerformers.includes(performer.id) ? 'checked' : ''} style="margin-right: 8px; cursor: pointer;">
+            <label for="performer-${type}-${performer.id}" style="cursor: pointer; flex-grow: 1;">${performer.name}</label>
+        </div>
+    `).join('');
+    
+    container.querySelectorAll('.performer-item').forEach((item, index) => {
+        const checkbox = item.querySelector('input[type="checkbox"]');
+        const performerId = performers[index].id;
+        item.addEventListener('click', (e) => {
+            if (e.target !== checkbox) {
+                checkbox.checked = !checkbox.checked;
+                updateSelectedPerformers(selectedPerformers, performerId, checkbox.checked);
+            }
+        });
+        checkbox.addEventListener('change', (e) => {
+            updateSelectedPerformers(selectedPerformers, performerId, e.target.checked);
+        });
+    });
+}
+
+function updateSelectedPerformers(selectedPerformers, performerId, isSelected) {
+    if (isSelected) {
+        if (!selectedPerformers.includes(performerId)) {
+            selectedPerformers.push(performerId);
+        }
+    } else {
+        const idx = selectedPerformers.indexOf(performerId);
+        if (idx > -1) {
+            selectedPerformers.splice(idx, 1);
+        }
+    }
+}
+
+
+function renderTagList(tags, container, selectedTags, type) {
+    if (!tags || tags.length === 0) {
+        container.innerHTML = '<div style="color: #999; padding: 8px; text-align: center;">No tags found</div>';
+        return;
+    }
+    
+    container.innerHTML = tags.map(tag => `
+        <div class="tag-item" style="padding: 8px; cursor: pointer; display: flex; align-items: center; border-radius: 4px; margin-bottom: 2px; ${selectedTags.includes(tag.id) ? 'background: #444;' : 'background: #333;'}">
+            <input type="checkbox" id="tag-${type}-${tag.id}" ${selectedTags.includes(tag.id) ? 'checked' : ''} style="margin-right: 8px; cursor: pointer;">
+            <label for="tag-${type}-${tag.id}" style="cursor: pointer; flex-grow: 1;">${tag.name}</label>
+        </div>
+    `).join('');
+    container.querySelectorAll('.tag-item').forEach((item, index) => {
+        const checkbox = item.querySelector('input[type="checkbox"]');
+        const tagId = tags[index].id;
+        item.addEventListener('click', (e) => {
+            if (e.target !== checkbox) {
+                checkbox.checked = !checkbox.checked;
+                updateSelectedTags(selectedTags, tagId, checkbox.checked);
+            }
+        });
+        checkbox.addEventListener('change', (e) => {
+            updateSelectedTags(selectedTags, tagId, e.target.checked);
+        });
+    });
+}
+
+function updateSelectedTags(selectedTags, tagId, isSelected) {
+    if (isSelected) {
+        if (!selectedTags.includes(tagId)) {
+            selectedTags.push(tagId);
+        }
+    } else {
+        const idx = selectedTags.indexOf(tagId);
+        if (idx > -1) {
+            selectedTags.splice(idx, 1);
+        }
+    }
+}
+
+async function updateContentViewWithFilter() {
+    const tagFilter = sessionStorage.getItem('galleryTagFilter');
+    let tagIds = [];
+    
+    if (tagFilter) {
+        try {
+            tagIds = JSON.parse(tagFilter);
+        } catch (e) {
+            console.error('Error parsing tag filter:', e);
+        }
+    }
+    window.dispatchEvent(new CustomEvent('updateDeckContent', { 
+        detail: { tagIds } 
+    }));
+}
+
+function getCurrentFilterTags() {
+    const tagFilter = sessionStorage.getItem('galleryTagFilter');
+    if (tagFilter) {
+        try {
+            const filterObj = JSON.parse(tagFilter);
+            return {
+                includedTags: filterObj.includedTags || [],
+                excludedTags: filterObj.excludedTags || [],
+                includedPerformers: filterObj.includedPerformers || [],
+                excludedPerformers: filterObj.excludedPerformers || []
+            };
+        } catch (e) {
+            console.error('Error parsing tag filter:', e);
+            return { includedTags: [], excludedTags: [], includedPerformers: [], excludedPerformers: [] };
+        }
+    }
+    return { includedTags: [], excludedTags: [], includedPerformers: [], excludedPerformers: [] };
+}
+
+
+export function setupEventHandlers(container, callbacks = {}) {
+    const { closeDeck, startAutoPlay, stopAutoPlay, loadNextChunk } = callbacks;
+    setDeckActive(true);
+    const filterChangeListener = async (e) => {
+        console.log('[Image Deck] Filter changed, updating content');
+        storedContextInfo = detectContext();
+        await updateContentViewWithFilter();
+    };
+    
+    window.addEventListener('galleryTagFilterChanged', filterChangeListener);
+    storeElementData(container, { filterChangeListener });
+    const keyboardHandler = handleKeyboard;
     const closeBtn = container.querySelector('.image-deck-close');
     if (closeBtn) {
-        closeBtn.addEventListener('click', closeDeck);
+        eventManager.add(closeBtn, 'click', closeDeck);
     }
-    
-    // Fullscreen button
     const fullscreenBtn = container.querySelector('.image-deck-fullscreen');
     if (fullscreenBtn) {
-        fullscreenBtn.addEventListener('click', toggleFullscreen);
+        eventManager.add(fullscreenBtn, 'click', toggleFullscreen);
     }
-
-    // Metadata modal close button
     const metadataCloseBtn = container.querySelector('.image-deck-metadata-close');
     if (metadataCloseBtn) {
-        metadataCloseBtn.addEventListener('click', closeMetadataModal);
+        eventManager.add(metadataCloseBtn, 'click', () => {
+            closeMetadataModal();
+            updateControlVisibility(true);
+        });
     }
-
-    // Control buttons
+	
+    const galleryFilterBtn = container.querySelector('.gallery-filter-btn');
+    if (galleryFilterBtn) {
+        eventManager.add(galleryFilterBtn, 'click', showGalleryTagFilter);
+    }
     const controlButtons = container.querySelectorAll('.image-deck-control-btn');
 
-	controlButtons.forEach(button => {
-		button.addEventListener('click', (e) => {
-			const action = button.dataset.action;
-			const swiper = window.currentSwiperInstance;
+    controlButtons.forEach(button => {
+        eventManager.add(button, 'click', (e) => {
+            const action = button.dataset.action;
+            const swiper = state.getSwiper();
+            if (button.classList.contains('gallery-filter-btn')) {
+                showGalleryTagFilter();
+                return;
+            }
 
-			if (!action) return;
+            if (!action) return;
 
-			switch(action) {
-				case 'prev':
-					if (swiper) {
-						swiper.slidePrev();
-					} else {
-						console.error('[Image Deck] Prev failed: window.currentSwiperInstance is not defined');
-					}
-					break;
-				case 'next':
-					if (swiper) {
-						swiper.slideNext();
-						setTimeout(() => {
-							loadNextChunk();
-						}, 100);
-					} else {
-						console.error('[Image Deck] Next failed: window.currentSwiperInstance is not defined');
-					}
-					break;
-				case 'play':
-					const playBtn = document.querySelector('[data-action="play"]');
-					const isAutoPlaying = playBtn && playBtn.classList.contains('active');
-					if (isAutoPlaying) {
-						stopAutoPlay();
-					} else {
-						startAutoPlay();
-					}
-					break;
-				case 'info':
-					openMetadataModal();
-					break;
-				case 'zoom-in':
-					// Check if current slide is a gallery
-					if (swiper && swiper.zoom && !isCurrentSlideGallery()) {
-						swiper.zoom.in();
-					}
-					break;
-				case 'zoom-out':
-					// Check if current slide is a gallery
-					if (swiper && swiper.zoom && !isCurrentSlideGallery()) {
-						swiper.zoom.out();
-					}
-					break;
-				case 'next-chunk':
-					loadNextChunk(container);
-					break;
-				default:
-					console.log('[Image Deck] Unknown action:', action);
-			}
-		});
-	});
-
-    // Add slide change listener to update gallery state
-    if (window.currentSwiperInstance) {
-        window.currentSwiperInstance.on('slideChangeTransitionEnd', function() {
-            updateGalleryStateClass();
+            switch(action) {
+                case 'prev':
+                    if (swiper) {
+                        swiper.slidePrev();
+                    } else {
+                        console.error('[Image Deck] Prev failed: swiper is not defined');
+                    }
+                    break;
+                case 'next':
+                    if (swiper) {
+                        swiper.slideNext();
+                        setTimeout(() => {
+                            loadNextChunk();
+                        }, 100);
+                    } else {
+                        console.error('[Image Deck] Next failed: swiper is not defined');
+                    }
+                    break;
+                case 'play':
+                    const playBtn = document.querySelector('[data-action="play"]');
+                    const isAutoPlaying = playBtn && playBtn.classList.contains('active');
+                    if (isAutoPlaying) {
+                        stopAutoPlay();
+                    } else {
+                        startAutoPlay();
+                    }
+                    break;
+                case 'info':
+                    updateControlVisibility(false);
+                    openMetadataModal();
+                    break;
+                case 'zoom-in':
+                    if (swiper && swiper.zoom && !isCurrentSlideGallery()) {
+                        swiper.zoom.in();
+                    }
+                    break;
+                case 'zoom-out':
+                    if (swiper && swiper.zoom && !isCurrentSlideGallery()) {
+                        swiper.zoom.out();
+                    }
+                    break;
+                case 'next-chunk':
+                    loadNextChunk(container);
+                    break;
+                default:
+                    console.log('[Image Deck] Unknown action:', action);
+            }
         });
+    }); 
+
+    // Fix the remove tag buttons event listeners
+		const removeTagButtons = container.querySelectorAll('.remove-filter-tag');
+		removeTagButtons.forEach(button => {
+			// Clone to remove any existing handlers
+			const newButton = button.cloneNode(true);
+			button.parentNode.replaceChild(newButton, button);
+			
+			eventManager.add(newButton, 'click', async (e) => {
+				e.stopPropagation();
+				const tagId = newButton.dataset.tagId;
+				const performerId = newButton.dataset.performerId; // Add this
+				const currentTags = getCurrentFilterTags();
+				
+				let newIncludedTags = currentTags.includedTags.filter(id => id !== tagId);
+				let newExcludedTags = currentTags.excludedTags.filter(id => id !== tagId);
+				let newIncludedPerformers = currentTags.includedPerformers.filter(id => id !== performerId);
+				let newExcludedPerformers = currentTags.excludedPerformers.filter(id => id !== performerId);
+				
+				if (newIncludedTags.length > 0 || newExcludedTags.length > 0 || 
+					newIncludedPerformers.length > 0 || newExcludedPerformers.length > 0) {
+					const filterObj = {
+						includedTags: newIncludedTags,
+						excludedTags: newExcludedTags,
+						includedPerformers: newIncludedPerformers,
+						excludedPerformers: newExcludedPerformers
+					};
+					sessionStorage.setItem('galleryTagFilter', JSON.stringify(filterObj));
+				} else {
+					sessionStorage.removeItem('galleryTagFilter');
+				}
+				
+				window.dispatchEvent(new CustomEvent('galleryTagFilterChanged'));
+			});
+		});
+
+    const swiper = state.getSwiper();
+    if (swiper) {
+        const slideChangeListener = function() {
+            updateGalleryStateClass();
+            updateControlVisibility(true);
+        };
+        swiper.on('slideChangeTransitionEnd', slideChangeListener);
+        storeElementData(container, { slideChangeListener });
         
-        // Initial check for first slide
         setTimeout(() => {
             updateGalleryStateClass();
         }, 0);
     }
 
-    // Keyboard controls - use capturing phase to intercept before other handlers
-    keyboardHandler = handleKeyboard;
-    document.addEventListener('keydown', handleKeyboard, true);
+    const keyboardHandlerWithActions = (e) => handleKeyboard(e, callbacks);
+    eventManager.add(document, 'keydown', keyboardHandlerWithActions, true);
     
-    // Swipe gestures logic
-    setupSwipeGestures(container);
-    // Mouse wheel support
-    setupMouseWheel(container);
+    setupSwipeGestures(container, eventManager);
+    setupMouseWheel(container, eventManager);
 }
 
-// Extracted swipe logic to keep setup clean
-function setupSwipeGestures(container) {
+function setupSwipeGestures(container, eventManager) {
     let touchStartY = 0;
     let touchStartX = 0;
     let touchDeltaY = 0;
@@ -187,116 +715,102 @@ function setupSwipeGestures(container) {
     let lastTouchTime = 0;
     let lastTouchX = 0;
     let lastTouchY = 0;
+    let isProcessingTouch = false;
     
     const swiperEl = container.querySelector('.image-deck-swiper');
     if (!swiperEl) return;
-
-    swiperEl.addEventListener('touchstart', (e) => {
-        // Don't interfere with pinch gestures (multi-touch)
-        if (e.touches.length > 1) return;
-        
-        if (e.target.closest('.image-deck-metadata-modal')) return;
-        
-        const currentTime = new Date().getTime();
-        const touchX = e.touches[0].clientX;
-        const touchY = e.touches[0].clientY;
-        
-        // Check for double tap (within 300ms and 20px distance)
-        if (currentTime - lastTouchTime < 300 && 
-            Math.abs(touchX - lastTouchX) < 20 && 
-            Math.abs(touchY - lastTouchY) < 20) {
+    const touchHandler = {
+        handleTouchStart: (e) => {
+            if (isProcessingTouch || e.touches.length > 1) return;
             
-            // Handle double tap zoom
-            handleDoubleTapZoom(e, container);
-            e.preventDefault();
-            return;
-        }
-        
-        lastTouchTime = currentTime;
-        lastTouchX = touchX;
-        lastTouchY = touchY;
-        
-        touchStartY = e.touches[0].clientY;
-        touchStartX = e.touches[0].clientX;
-        touchDeltaY = 0;
-        touchDeltaX = 0;
-    }, { passive: false }); // Changed to not passive to allow preventDefault
+            if (e.target.closest('.image-deck-metadata-modal')) return;
+            
+            const currentTime = new Date().getTime();
+            const touchX = e.touches[0].clientX;
+            const touchY = e.touches[0].clientY;
+            if (currentTime - lastTouchTime < 300 && 
+                Math.abs(touchX - lastTouchX) < 20 && 
+                Math.abs(touchY - lastTouchY) < 20) {
+                
+                handleDoubleTapZoom(e, container);
+                e.preventDefault();
+                isProcessingTouch = true;
+                return;
+            }
+            
+            lastTouchTime = currentTime;
+            lastTouchX = touchX;
+            lastTouchY = touchY;
+            
+            touchStartY = touchY;
+            touchStartX = touchX;
+            touchDeltaY = 0;
+            touchDeltaX = 0;
+            isProcessingTouch = false;
+        },
 
-    swiperEl.addEventListener('touchmove', (e) => {
-        // Don't interfere with pinch gestures (multi-touch)
-        if (e.touches.length > 1) {
-            if (rafId) cancelAnimationFrame(rafId);
-            container.style.transform = '';
-            container.style.opacity = '';
-            return;
-        }
-        
-        if (e.target.closest('.image-deck-metadata-modal')) return;
-        
-        const currentY = e.touches[0].clientY;
-        const currentX = e.touches[0].clientX;
-        
-        touchDeltaY = currentY - touchStartY;
-        touchDeltaX = Math.abs(currentX - touchStartX);
-        
-        // Check if we're in fullscreen mode
-        const isInFullscreen = !!document.fullscreenElement;
-        
-        // Only trigger swipe-to-close if:
-        // 1. NOT in fullscreen mode
-        // 2. Vertical movement is significant (> 30px)
-        // 3. Horizontal movement is minimal (< 50px)
-        // 4. Moving downward (positive deltaY)
-        if (!isInFullscreen && touchDeltaY > 30 && touchDeltaX < 50) {
-            if (rafId) cancelAnimationFrame(rafId);
-            rafId = requestAnimationFrame(() => {
-                container.style.transform = `translateY(${touchDeltaY * 0.3}px)`;
-                container.style.opacity = Math.max(0.3, 1 - (touchDeltaY / 500));
-            });
-        }
-    }, { passive: true });
+        handleTouchMove: (e) => {
+            if (isProcessingTouch || e.touches.length > 1) return;
+            
+            if (e.target.closest('.image-deck-metadata-modal')) return;
+            
+            const currentY = e.touches[0].clientY;
+            const currentX = e.touches[0].clientX;
+            
+            touchDeltaY = currentY - touchStartY;
+            touchDeltaX = Math.abs(currentX - touchStartX);
+            
+            const isInFullscreen = !!document.fullscreenElement;
+            if (!isInFullscreen && touchDeltaY > 30 && touchDeltaX < 50) {
+                if (rafId) cancelAnimationFrame(rafId);
+                rafId = requestAnimationFrame(() => {
+                    container.style.transform = `translateY(${touchDeltaY * 0.3}px)`;
+                    container.style.opacity = Math.max(0.3, 1 - (touchDeltaY / 500));
+                });
+                isProcessingTouch = true;
+            }
+        },
 
-    swiperEl.addEventListener('touchend', (e) => {
-        if (rafId) cancelAnimationFrame(rafId);
-        
-        // Check if we're in fullscreen mode
-        const isInFullscreen = !!document.fullscreenElement;
-        
-        // Only close if NOT in fullscreen AND vertical swipe was significant
-        if (!isInFullscreen && touchDeltaY > 150 && touchDeltaX < 50) {
-            closeDeck();
-        } else {
-            // Animate back smoothly
-            requestAnimationFrame(() => {
-                container.style.transform = '';
-                container.style.opacity = '';
-            });
+        handleTouchEnd: (e) => {
+            if (rafId) cancelAnimationFrame(rafId);
+            
+            const isInFullscreen = !!document.fullscreenElement;
+            
+            if (!isInFullscreen && touchDeltaY > 150 && touchDeltaX < 50) {
+                closeDeck();
+            } else {
+                requestAnimationFrame(() => {
+                    container.style.transform = '';
+                    container.style.opacity = '';
+                });
+            }
+            
+            touchDeltaY = 0;
+            touchDeltaX = 0;
+            isProcessingTouch = false;
         }
-        
-        touchDeltaY = 0;
-        touchDeltaX = 0;
-    }, { passive: true });
+    };
+
+    eventManager.add(swiperEl, 'touchstart', touchHandler.handleTouchStart, { passive: false });
+    eventManager.add(swiperEl, 'touchmove', touchHandler.handleTouchMove, { passive: true });
+    eventManager.add(swiperEl, 'touchend', touchHandler.handleTouchEnd, { passive: true });
 }
 
-// Add this helper function for double tap zoom handling
 function handleDoubleTapZoom(event, container) {
-    const swiper = window.currentSwiperInstance;
+    const swiper = state.getSwiper();
     if (!swiper || !swiper.zoom) return;
     
-    // Check if current slide is a gallery (don't zoom galleries)
     if (isCurrentSlideGallery()) {
         console.log('[Image Deck] Double tap ignored - gallery slide');
         return;
     }
     
-    // Get the target element coordinates
     const rect = event.target.getBoundingClientRect();
     const x = event.touches[0].clientX - rect.left;
     const y = event.touches[0].clientY - rect.top;
     
-    // Toggle zoom
     if (swiper.zoom.scale === 1) {
-        swiper.zoom.in(swiper.zoom.enabled ? 2 : 1); // Zoom to 2x
+        swiper.zoom.in(swiper.zoom.enabled ? 2 : 1);
         console.log('[Image Deck] Double tap zoom in');
     } else {
         swiper.zoom.out();
@@ -306,33 +820,25 @@ function handleDoubleTapZoom(event, container) {
     event.preventDefault();
 }
 
-function setupMouseWheel(container) {
-    // Mouse wheel support - attach directly to the swiper element
+function setupMouseWheel(container, eventManager) {
     const swiperEl = container.querySelector('.image-deck-swiper');
     if (!swiperEl) return;
 
-    swiperEl.addEventListener('wheel', (e) => {
-        //Fetch swiper from the global window object every time
-        const swiper = window.currentSwiperInstance;
+    eventManager.add(swiperEl, 'wheel', (e) => {
+        const swiper = state.getSwiper();
         if (!swiper) return;
 
-        // Prevent default scrolling behavior
         e.preventDefault();
         
-        // Debounce rapid wheel events
         if (swiper.wheeling) return;
         swiper.wheeling = true;
         
-        // Determine scroll direction
         if (e.deltaY > 0) {
-            // Scroll down - next slide
             swiper.slideNext();
         } else if (e.deltaY < 0) {
-            // Scroll up - prev slide
             swiper.slidePrev();
         }
         
-        // Reset wheeling flag after a short delay
         setTimeout(() => {
             if (swiper) swiper.wheeling = false;
         }, 150);
@@ -343,20 +849,32 @@ export function setDeckActive(active) {
     isDeckActive = active;
 }
 
-// Keyboard handler
-function handleKeyboard(e) {
-    // Only handle keyboard events when deck is active
-    if (!isDeckActive) return;
+function handleKeyboard(e, actions = {}) {
+    const { closeDeck, startAutoPlay, stopAutoPlay } = actions;
     
-    // Always prevent default for these keys when deck is active
-    if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' ', 'Escape', '+', '-', '0'].includes(e.key)) {
-        e.preventDefault();
-        e.stopPropagation(); // Stop event from bubbling up
+    if (!isDeckActive) return;
+	const formElements = ['INPUT', 'TEXTAREA', 'SELECT'];
+    if (formElements.includes(e.target.tagName)) {
+        if (e.key === ' ' && e.target.tagName === 'INPUT') {
+            e.stopPropagation();
+            return;
+        }
+        return;
     }
     
-    const swiper = window.currentSwiperInstance;
+    const inModalInput = (e.target.closest('.gallery-tag-filter-modal') || e.target.closest('.image-deck-metadata-modal')) && 
+                        (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA');
     
-    // Skip if typing in input fields
+    if (inModalInput && e.key === ' ') {
+        return; 
+    }
+    
+    if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' ', 'Escape', '+', '-', '0'].includes(e.key)) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+    
+    const swiper = state.getSwiper();
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
         if (e.key === 'Escape') {
             closeMetadataModal();
@@ -370,7 +888,7 @@ function handleKeyboard(e) {
             const modal = document.querySelector('.image-deck-metadata-modal');
             if (modal && modal.classList.contains('active')) {
                 closeMetadataModal();
-            } else {
+            } else if (closeDeck) {
                 closeDeck();
             }
             break;
@@ -379,9 +897,9 @@ function handleKeyboard(e) {
             e.stopPropagation();
             const playBtn = document.querySelector('[data-action="play"]');
             if (playBtn && playBtn.classList.contains('active')) {
-                stopAutoPlay();
+                if (stopAutoPlay) stopAutoPlay();
             } else {
-                startAutoPlay();
+                if (startAutoPlay) startAutoPlay();
             }
             break;
         case 'i':
@@ -392,31 +910,30 @@ function handleKeyboard(e) {
             if (metadataModal && metadataModal.classList.contains('active')) {
                 closeMetadataModal();
             } else {
+                updateControlVisibility(false);
                 openMetadataModal();
             }
             break;
-        // ZOOM CONTROLS
-		case '+':
-		case '=':
-			e.preventDefault();
-			if (swiper && swiper.zoom && !isCurrentSlideGallery()) {
-				swiper.zoom.in();
-			}
-			break;
-		case '-':
-		case '_':
-			e.preventDefault();
-			if (swiper && swiper.zoom && !isCurrentSlideGallery()) {
-				swiper.zoom.out();
-			}
-			break;
-		case '0':
-			e.preventDefault();
-			if (swiper && swiper.zoom && !isCurrentSlideGallery()) {
-				swiper.zoom.reset();
-			}
-			break;
-        // ARROW KEY SUPPORT
+        case '+':
+        case '=':
+            e.preventDefault();
+            if (swiper && swiper.zoom && !isCurrentSlideGallery()) {
+                swiper.zoom.in();
+            }
+            break;
+        case '-':
+        case '_':
+            e.preventDefault();
+            if (swiper && swiper.zoom && !isCurrentSlideGallery()) {
+                swiper.zoom.out();
+            }
+            break;
+        case '0':
+            e.preventDefault();
+            if (swiper && swiper.zoom && !isCurrentSlideGallery()) {
+                swiper.zoom.reset();
+            }
+            break;
         case 'ArrowLeft':
             e.preventDefault();
             e.stopPropagation();
@@ -429,18 +946,12 @@ function handleKeyboard(e) {
             e.stopPropagation();
             if (swiper) {
                 swiper.slideNext();
-                // Trigger next chunk loading if needed
                 setTimeout(() => {
-                    if (window.currentSwiperInstance) {
-                        const currentIndex = window.currentSwiperInstance.activeIndex;
-                        const totalCurrentSlides = window.currentSwiperInstance.virtual ? 
-                            window.currentSwiperInstance.virtual.slides.length : 
-                            window.currentSwiperInstance.slides.length;
-                        const totalPagesLocal = totalPages || 1;
-                        
-                        if (currentIndex >= totalCurrentSlides - 3 && currentChunkPage < totalPagesLocal) {
-                            loadNextChunk(container);
-                        }
+                    if (swiper) {
+                        const currentIndex = swiper.activeIndex;
+                        const totalCurrentSlides = swiper.virtual ? 
+                            swiper.virtual.slides.length : 
+                            swiper.slides.length;
                     }
                 }, 100);
             }
@@ -448,12 +959,12 @@ function handleKeyboard(e) {
     }
 }
 
-// Cleanup function to remove event listeners
 export function cleanupEventHandlers() {
-    if (keyboardHandler) {
-        document.removeEventListener('keydown', keyboardHandler, true);
-        keyboardHandler = null;
-    }
-    // Reset deck active state
+    eventManager.removeAll();
     isDeckActive = false;
+    document.removeEventListener('keydown', handleKeyboard, true);
+    const swiper = state.getSwiper();
+    if (swiper) {
+        swiper.off('slideChangeTransitionEnd');
+    }
 }
