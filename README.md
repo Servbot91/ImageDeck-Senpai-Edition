@@ -1,25 +1,45 @@
-# Deck Viewer for Stash
+||||
+|-|-|-|
+:placard: | **Summary** | An optimized single-hand gallery and image viewer for Stash that replaces the default image viewer.
+:link: | **Repository** | <https://github.com/Servbot91/Deck-Viewer/tree/main/plugins/Deck%20Viewer>
+:information_source: | **Source URL** | https://raw.githubusercontent.com/Servbot91/Deck-Viewer/refs/heads/main/plugins/manifest.yml
+:open_book: | **Install** | [How to install a plugin?](https://discourse.stashapp.cc/t/-/1015)
+
 
 ## Overview
 
-Deck Viewer is a complete rework and reimagination of the original Image-Deck plugin and hijacks the built in stash image viewer. It is meant be used solely over the built in image viewbox and also adds a gallery viewbox. The plugin design is intended to make browsing galleries and images more streamlined and less error prone to accidental clicks\swipes and to futher optimize one hand browsing.
+Deck Viewer is the Sakoto fork and complete re imagination of the original [Image-Deck plugin](https://discourse.stashapp.cc/t/image-deck-fullscreen-swipeable-image-viewer/). It hijacks the built in stash image viewer. It is meant to further enhance gallery and image content consumption, streamlining one handed use while providing necessary functionality for cataloging and reducing accidental clicks\swipes when you're just trying to pad your O stats.
 
-Deck Viewer was written with AI assistance (qwen3-coder:480b, and my local qwen3-coder30b) following general Dev standards and hygeine while also protecting integrity of the plugin with simple A\B testing and versioning.
+Deck Viewer was written with AI assistance (qwen3-coder:480b, and my local qwen3-coder30b) following general Dev standards and hygiene while also protecting integrity of the plugin with simple A\B testing and versioning.
+
+---
+## Screenshots
+<details>
+  <summary>Click to expand</summary>
+
+![Screenshot 2026-03-26 164733|690x210](upload://82i5AqX5ZrhC0NdSJg6dtpE9fM3.png)![Screenshot 2026-03-26 164724|690x35](upload://jKuSTdtCBV8Vwf6qgmyTR8vDDlj.png)![Screenshot 2026-03-26 164707|259x499](upload://nStsruouZqcdeMTtAk4u8xqDwYM.png)![Screenshot 2026-03-26 164655|279x500](upload://efU2IMdJLDjW3eBxoOSzuwh9gTA.png)![Screenshot 2026-03-25 120836|325x499](upload://liBPfEnyeqODQ5D6Oh8llPc7Qb1.png)![Screenshot 2026-03-25 120829|326x500](upload://df2Xt6dzKFhzHU0v9h4csbZpdLR.jpeg)![Screenshot_20260417_201436_Firefox|277x500](upload://ecm6P4JMlb6xwEHsUo3x9DDlYDI.jpeg)![Screenshot_20260417_153930_Firefox|277x500](upload://yQbZ1tJaFtHNNRhsH45m4yY3NxT.jpeg)![Screenshot_20260417_154125_Firefox|277x500](upload://j8xRZsk4uE9qnqU68Y2rn4yYMNT.jpeg)![Screenshot_20260417_173904_Firefox|278x500](upload://hLWx0FZILoeyUstDRVR7sGUglzj.jpeg)![Screenshot_20260417_185845_Firefox|277x500](upload://4dvgiBxWKZEmVIJOPMYTZffgJ0D.jpeg)![Screenshot 2026-04-16 204534|690x496](upload://bmF62icqy1egDUjMKvnqxunw7Ri.jpeg)![Screenshot 2026-04-16 204458|630x500](upload://jr2cVCUQ8jSSmPDnSt19jZj5VaE.jpeg)
+
+
+
+</details>
 
 ---
 ## Improvements
 
 ### Feature Integration
-- Performer page integration
-	- logic works properly for gallery or images selection
+- Performer page integration. Switch Between Gallery Mode and Image Mode anytime regardless of where you are in stash even on performer pages!
 - Added Mouse wheel functionality
+- Tag images\galleries with studios, update titles, details, performer gallery tags
 - Added zoom functionality for mobile and desktop (buttons respect context ie no zoom on galleries)
-- Swipe and pinch gestures on mobile functional
-- Added Gallery support and viewbox
-- Galleries display performer name and image count and clicking\selecting them will open the respective gallery
+- Full mobile integration and optimization
+- One Handed browsing
+- Added Gallery support
 - Added keyboard support (strict)
 - Supports SFW Plugin
-- Default Image Viewer Hijacking
+- Integrated with default stash buttons
+- Filter your galleries\images in real time. Add exclusions, or filter for performers. It all happens server side with minimal client side stress.
+- Default Stash Image Viewer Hijacking
+- Localstorage utilized to remember states and places, persists.
 - Infinite Scroll 
 	- For as long as you have content. It will scroll as long as content exists, it however does not loop around.
 ---
@@ -30,64 +50,25 @@ Deck Viewer was written with AI assistance (qwen3-coder:480b, and my local qwen3
 	- Images are locked to 50 on load for performance. Once you are nearing the end of a chunk, the next chunk is loaded. You also have the option to preload multiple chunks ahead by pressing the load next chunk feature.
 	- Chunk system has a safety check to prevent backend query spam and will skip if a chunk load is in progress
 	- Can manually load the next chunk via button
-- Removed particles and effects and buttons such as strobe.
-- Further reduced code stack (needs further improvement)
-- Backend GraphQL is properly using stash schema rather than guessing
+- Removed bloat effects
+- Backend GraphQL is properly using stash schema
 ---
+
 ### QOL Improvements
 
-- Respects filter context 
-	- Note: For the most part, it will not work if you have an exclusion in front of your inclusion meaning the INCLUDE must come before the EXCLUDE or no exclude at all for it to properly function. If an include is after another include, it should work.
-- Split up the image-deck.js into a more manageable format
-	- button.js
-	- config.js
-	- context.js
-	- controls.js
-	- deck.js
-	- graphql.js
-	- main.js
-	- metadata.js
-	- styles.css
-	- swiper.js
-	- ui.js
-	- utils.js
-- When in a gallery, it will remember where you left off
-	- Minor disclaimer here, if the 'rememebered item' is not within the chunk it will default to the first in the list (title sort)
-- Focused view over original card view (no more cards behind cards)
+- Server Side Filtering
+- Focused view over original card view
 - Buttons and text fade out when zoomed in
+- Single hand optimizations
+
+## Release notes
+- 04-17-2026 -  Going forward all release notes will be posted on the github releases -> [Full Version 1.2 release notes](https://github.com/Servbot91/Deck-Viewer/releases/tag/1.2)
+
+- 3-26-2026 - [Full version 1.0 release notes](https://github.com/Servbot91/Deck-Viewer/blob/main/Previous-Releases/ReleaseNotes.md)
 ---
-## Bug Fixes
-
-- Corrected all logic in relation to splitting the original image-deck.js into a more manageable package base.
-- Fix button appearance context
-- Made image context more strict, no studio images in reel or other images not relevant to that specific content
-- Cleaned up comments
-- General formatting
-- Fixed card positioning and centering\sync issues
-- Corrected filter logic for ASC and DESC, now displays sort correctly
-- Removed card looping
-- Removed cards from behind main card
-- Removed additional code bloat such as strobe, particles, other nonsense effects
-- Major performance enhancements regarding logic and effect usage
-- All galleries follow same logic
-	- This corrects the incorrect image count display, ghost slides, and looping of the same images for small galleries
-- Most if not all backend errors fixed
-- Image and gallery counter fixed and showing correct values
-- No more ghost slides and images
-- Fixed Album 'State' context
-- Improved click to launch time for image galleries in the millions  (With 3.3mil images it loads in the milliseconds )
-- Nav buttons all function correctly
-- Improved all gesture performance response
-- removed swipe down to close on fullscreen
-- increased threshold for close and accidental swipe gestures
-- 'i' or metadata button now displays correctly on both mobile and desktop it is responsive in galleries but currently none functional at the moment.
----
-
-## Known issues
-
-- Zoom buttons appear for galleries if swiping on mobile/desktop past the 10th display
-- Filter exclusion issue mentioned in QOL Improvements
-- When using keyboard keys on desktop, you will get a console error related to the chunk system. This is a minor bug IMO opinion as the safety logic continues to the core functionality without interruption. At worse you dont preload a chunk until you reach the end it however clicking the nav buttons the chunk system works without issue. This does not cause performance overhead, and is technically a performance improvement though it will be addressed.
-- CSS stylesheet needs to be cleaned up
-- additional code cleanup needs to be performed
-- Metadata use and tagging is very barebones for now, will be modified at a later time
+## Installation
+1. Settings → Plugins → Available Plugins
+2. Add Source → Name: Deck Viewer
+3. Source URL: https://github.com/Servbot91/Deck-Viewer/raw/refs/heads/main/plugins/manifest.yml
+4. Click checkbox, Install
+5. Reload Plugins
