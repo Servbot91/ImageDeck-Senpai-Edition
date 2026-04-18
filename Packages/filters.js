@@ -21,10 +21,10 @@ export function parseUrlFilters(search) {
             console.error('[Image Deck] Filter parse error:', e);
         }
     }
-    let sortDir = 'asc'; 
-    if (params.has('sortdir')) {
-        sortDir = params.get('sortdir') || 'asc';
-    }
+    
+    // Explicitly set default to desc for newest first
+    const sortDir = params.get('sortdir') || 'desc';
+    
     return {
         ...parsedFilter,
         sortBy: params.get('sortby') || 'created_at',

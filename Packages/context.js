@@ -111,7 +111,7 @@ export function detectContext() {
             // Default sorting for single gallery
             if (!new URLSearchParams(search).get('sortby') && !new URLSearchParams(search).get('sortdir')) {
                 singleGalleryFilters.sortBy = 'title';
-                singleGalleryFilters.sortDir = 'asc';
+                singleGalleryFilters.sortDir = 'desc';
             }
             return { type: 'galleries', id: galleryIdMatch[1], hash, isSingleGallery: true, filter: singleGalleryFilters };
         } else {
@@ -635,7 +635,7 @@ export async function fetchContextImages(context, page = 1, perPage = 50) {
             per_page: perPage, 
             page: page, 
             sort: filter?.sortBy || "created_at", 
-            direction: (filter?.sortDir || "desc").toUpperCase() 
+            direction: (filter?.sortDir || "DESC").toUpperCase() 
         }
     };
 
